@@ -23,8 +23,8 @@ public class SerializationProvider {
   }
 
   /**
-   * Same as {@link #getStandardJsonSerialization(LionWebVersion)},
-   * but {@link AbstractSerialization#serializeEmptyFeatures omits empty features}.
+   * Same as {@link #getStandardJsonSerialization(LionWebVersion)}, but {@link
+   * AbstractSerialization#serializeEmptyFeatures omits empty features}.
    */
   public static JsonSerialization getEfficientJsonSerialization(
       @Nonnull LionWebVersion lionWebVersion) {
@@ -58,11 +58,11 @@ public class SerializationProvider {
   }
 
   /**
-   * Same as {@link #getStandardProtoBufSerialization(LionWebVersion)},
-   * but {@link AbstractSerialization#serializeEmptyFeatures omits empty features}.
+   * Same as {@link #getStandardProtoBufSerialization(LionWebVersion)}, but {@link
+   * AbstractSerialization#serializeEmptyFeatures omits empty features}.
    */
   public static ProtoBufSerialization getEfficientProtoBufSerialization(
-          @Nonnull LionWebVersion lionWebVersion) {
+      @Nonnull LionWebVersion lionWebVersion) {
     ProtoBufSerialization serialization = getStandardProtoBufSerialization(lionWebVersion);
     serialization.setSerializeEmptyFeatures(false);
     return serialization;

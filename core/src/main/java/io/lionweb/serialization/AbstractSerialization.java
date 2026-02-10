@@ -52,9 +52,7 @@ public abstract class AbstractSerialization {
   protected UnavailableNodePolicy unavailableReferenceTargetPolicy =
       UnavailableNodePolicy.THROW_ERROR;
 
-  /**
-   * Whether we include (true) or omit (false) empty features in serialization.
-   */
+  /** Whether we include (true) or omit (false) empty features in serialization. */
   protected boolean serializeEmptyFeatures = true;
 
   private final @Nonnull LionWebVersion lionWebVersion;
@@ -273,10 +271,10 @@ public abstract class AbstractSerialization {
   }
 
   private void serializeReferences(
-          @Nonnull ClassifierInstance<?> classifierInstance,
-          SerializedClassifierInstance serializedClassifierInstance,
-          boolean builtinsReferenceDangling,
-          SerializationStatus serializationStatus) {
+      @Nonnull ClassifierInstance<?> classifierInstance,
+      SerializedClassifierInstance serializedClassifierInstance,
+      boolean builtinsReferenceDangling,
+      SerializationStatus serializationStatus) {
     Objects.requireNonNull(classifierInstance, "ClassifierInstance should not be null");
     serializationStatus
         .allReferences(classifierInstance.getClassifier())
@@ -308,9 +306,9 @@ public abstract class AbstractSerialization {
   }
 
   private void serializeContainments(
-          @Nonnull ClassifierInstance<?> classifierInstance,
-          SerializedClassifierInstance serializedClassifierInstance,
-          SerializationStatus serializationStatus) {
+      @Nonnull ClassifierInstance<?> classifierInstance,
+      SerializedClassifierInstance serializedClassifierInstance,
+      SerializationStatus serializationStatus) {
     Objects.requireNonNull(classifierInstance, "ClassifierInstance should not be null");
     serializationStatus
         .allContainments(classifierInstance.getClassifier())
