@@ -250,6 +250,7 @@ public class SerializationOfLibraryTest extends SerializationTest {
     SerializedClassifierInstance standardLib = standardChunk.getInstanceByID("lib");
     assertEquals(1, standardLib.getContainments().size());
     SerializedClassifierInstance standardBook = standardChunk.getInstanceByID("book");
+    assertEquals(2, standardBook.getProperties().size());
     assertEquals(1, standardBook.getReferences().size());
 
     JsonSerialization efficientSerialization =
@@ -259,6 +260,7 @@ public class SerializationOfLibraryTest extends SerializationTest {
     SerializedClassifierInstance efficientLib = efficientChunk.getInstanceByID("lib");
     assertEquals(0, efficientLib.getContainments().size());
     SerializedClassifierInstance efficientBook = efficientChunk.getInstanceByID("book");
+    assertEquals(0, efficientBook.getProperties().size());
     assertEquals(0, efficientBook.getReferences().size());
   }
 }

@@ -590,6 +590,33 @@ public class ProtobufSerializationTest extends SerializationTest {
         () -> serialization.serializeNodesToByteArray(Collections.singletonList(proxy)));
   }
 
+  @Test
+  public void serializeEmptyFeatures_Protobuf() throws IOException {
+    Library lib = new Library("lib", "lib");
+    Book book = new Book("book");
+    List<ClassifierInstance<?>> nodes = Arrays.asList(lib, book);
+
+    ProtoBufSerialization standardSerialization =
+        SerializationProvider.getStandardProtoBufSerialization(LionWebVersion.v2023_1);
+    byte[] standardBytes = standardSerialization.serializeNodesToByteArray(nodes);
+    SerializationChunk standardChunk = standardSerialization.deserializeToChunk(standardBytes);
+    SerializedClassifierInstance standardLib = standardChunk.getInstanceByID("lib");
+    assertEquals(1, standardLib.getContainments().size());
+    SerializedClassifierInstance standardBook = standardChunk.getInstanceByID("book");
+    assertEquals(2, standardBook.getProperties().size());
+    assertEquals(1, standardBook.getReferences().size());
+
+    ProtoBufSerialization efficientSerialization =
+        SerializationProvider.getEfficientProtoBufSerialization(LionWebVersion.v2023_1);
+    byte[] efficientBytes = efficientSerialization.serializeNodesToByteArray(nodes);
+    SerializationChunk efficientChunk = efficientSerialization.deserializeToChunk(efficientBytes);
+    SerializedClassifierInstance efficientLib = efficientChunk.getInstanceByID("lib");
+    assertEquals(0, efficientLib.getContainments().size());
+    SerializedClassifierInstance efficientBook = efficientChunk.getInstanceByID("book");
+    assertEquals(0, efficientBook.getProperties().size());
+    assertEquals(0, efficientBook.getReferences().size());
+  }
+
   private void assertSerializationChunkContainsLanguage(
       SerializationChunk serializationChunk, Language language) {
     assertTrue(

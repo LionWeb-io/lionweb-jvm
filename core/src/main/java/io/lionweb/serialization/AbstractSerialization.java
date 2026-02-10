@@ -339,13 +339,15 @@ public abstract class AbstractSerialization {
         .allProperties(classifierInstance.getClassifier())
         .forEach(
             property -> {
-              SerializedPropertyValue propertyValue =
-                  SerializedPropertyValue.get(
-                      MetaPointer.from(
-                          property, ((LanguageEntity<?>) property.getContainer()).getLanguage()),
-                      serializePropertyValue(
-                          property.getType(), classifierInstance.getPropertyValue(property)));
-              serializedClassifierInstance.unsafeAppendPropertyValue(propertyValue);
+              Object propertyValue = classifierInstance.getPropertyValue(property);
+              if (serializeEmptyFeatures || propertyValue != null) {
+                SerializedPropertyValue serializedValue =
+                    SerializedPropertyValue.get(
+                        MetaPointer.from(
+                            property, ((LanguageEntity<?>) property.getContainer()).getLanguage()),
+                        serializePropertyValue(property.getType(), propertyValue));
+                serializedClassifierInstance.unsafeAppendPropertyValue(serializedValue);
+              }
             });
   }
 
