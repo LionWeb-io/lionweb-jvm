@@ -18,6 +18,7 @@ import io.lionweb.serialization.refsmm.RefsLanguage;
 import io.lionweb.serialization.simplemath.IntLiteral;
 import io.lionweb.serialization.simplemath.SimpleMathLanguage;
 import io.lionweb.serialization.simplemath.Sum;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -615,6 +616,23 @@ public class ProtobufSerializationTest extends SerializationTest {
     SerializedClassifierInstance efficientBook = efficientChunk.getInstanceByID("book");
     assertEquals(0, efficientBook.getProperties().size());
     assertEquals(0, efficientBook.getReferences().size());
+
+    PBChunk pbChunk = PBChunk.parseFrom(new ByteArrayInputStream(efficientBytes));
+    List<PBNode> nodesList = pbChunk.getNodesList();
+    PBNode pbLib = nodesList.get(0);
+    assertEquals(0, pbLib.getContainmentsCount());
+    PBNode pbBook = nodesList.get(1);
+    assertEquals(0, pbBook.getPropertiesCount());
+    assertEquals(0, pbBook.getReferencesCount());
+
+    byte[] mixedBytes = efficientSerialization.serializeToByteArray(standardChunk);
+    PBChunk pbMixedChunk = PBChunk.parseFrom(new ByteArrayInputStream(mixedBytes));
+    List<PBNode> mixedNodesList = pbMixedChunk.getNodesList();
+    PBNode pbMixedLib = mixedNodesList.get(0);
+    assertEquals(0, pbMixedLib.getContainmentsCount());
+    PBNode pbMixedBook = mixedNodesList.get(1);
+    assertEquals(0, pbMixedBook.getPropertiesCount());
+    assertEquals(0, pbMixedBook.getReferencesCount());
   }
 
   private void assertSerializationChunkContainsLanguage(
