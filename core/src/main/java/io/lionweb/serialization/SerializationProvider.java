@@ -28,7 +28,7 @@ public class SerializationProvider {
    */
   public static JsonSerialization getEfficientJsonSerialization(
       @Nonnull LionWebVersion lionWebVersion) {
-    JsonSerialization serialization = getStandardJsonSerialization();
+    JsonSerialization serialization = getStandardJsonSerialization(lionWebVersion);
     serialization.setSerializeEmptyFeatures(false);
     return serialization;
   }
