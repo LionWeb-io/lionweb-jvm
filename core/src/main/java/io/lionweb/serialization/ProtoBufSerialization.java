@@ -107,7 +107,7 @@ public class ProtoBufSerialization extends AbstractSerialization {
                   .forEach(
                       p -> {
                         int siValue = p.getSiValue();
-                        if (serializeEmptyFeatures || siValue == 0) {
+                        if (serializeEmptyFeatures || siValue != 0) {
                           SerializedPropertyValue spv =
                               SerializedPropertyValue.get(
                                   metapointersArray[p.getMpiMetaPointer()], stringsArray[siValue]);
