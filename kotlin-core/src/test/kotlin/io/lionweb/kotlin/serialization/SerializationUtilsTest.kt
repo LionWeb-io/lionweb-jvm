@@ -75,8 +75,8 @@ class SerializationUtilsTest {
                         )
                         unsafeAppendReferenceValue(
                             SerializedReferenceValue(
-                                MetaPointer.get("LionCore-M3","2024.1","Language-dependsOn")
-                            )
+                                MetaPointer.get("LionCore-M3", "2024.1", "Language-dependsOn"),
+                            ),
                         )
                     }
                 addClassifierInstance(sc1)
@@ -103,17 +103,17 @@ class SerializationUtilsTest {
                         unsafeAppendContainmentValue(
                             SerializedContainmentValue(
                                 MetaPointer.get("LionCore-M3", "2024.1", "Classifier-features"),
-                            )
+                            ),
                         )
                         unsafeAppendReferenceValue(
                             SerializedReferenceValue(
-                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-extends")
-                            )
+                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-extends"),
+                            ),
                         )
                         unsafeAppendReferenceValue(
                             SerializedReferenceValue(
-                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-implements")
-                            )
+                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-implements"),
+                            ),
                         )
                         parentNodeID = sc1.id
                     }
@@ -137,12 +137,12 @@ class SerializationUtilsTest {
                         unsafeAppendContainmentValue(
                             SerializedContainmentValue(
                                 MetaPointer.get("LionCore-M3", "2024.1", "Classifier-features"),
-                            )
+                            ),
                         )
                         unsafeAppendReferenceValue(
                             SerializedReferenceValue(
-                                MetaPointer.get("LionCore-M3", "2024.1", "Interface-extends")
-                            )
+                                MetaPointer.get("LionCore-M3", "2024.1", "Interface-extends"),
+                            ),
                         )
                         parentNodeID = sc1.id
                     }
