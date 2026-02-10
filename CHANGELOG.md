@@ -1,5 +1,8 @@
 # Changelog
 
+### Version 1.3.2
+* Serializes empty features by default ([#306](https://github.com/LionWeb-io/lionweb-jvm/issues/306))
+
 ### Version 1.3.1
 
 * Fix issues in generation of classes related to conflicts with Java keywords

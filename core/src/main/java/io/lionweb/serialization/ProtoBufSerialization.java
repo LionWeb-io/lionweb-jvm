@@ -123,7 +123,7 @@ public class ProtoBufSerialization extends AbstractSerialization {
                           }
                           children.add(stringsArray[childIndex]);
                         }
-                        if (!children.isEmpty()) {
+                        if (serializeEmptyFeatures || !children.isEmpty()) {
                           SerializedContainmentValue scv =
                               new SerializedContainmentValue(
                                   metapointersArray[c.getMpiMetaPointer()], children);
@@ -144,7 +144,7 @@ public class ProtoBufSerialization extends AbstractSerialization {
                                   entry.setResolveInfo(stringsArray[rv.getSiResolveInfo()]);
                                   srv.addValue(entry);
                                 });
-                        if (!srv.getValue().isEmpty()) {
+                        if (serializeEmptyFeatures || !srv.getValue().isEmpty()) {
                           sci.unsafeAppendReferenceValue(srv);
                         }
                       });

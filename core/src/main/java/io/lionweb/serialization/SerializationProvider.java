@@ -13,11 +13,23 @@ public class SerializationProvider {
     return getStandardJsonSerialization(LionWebVersion.currentVersion);
   }
 
+  /** This has specific support for LionCore or LionCoreBuiltins. */
   public static JsonSerialization getStandardJsonSerialization(
       @Nonnull LionWebVersion lionWebVersion) {
     Objects.requireNonNull(lionWebVersion, "lionWebVersion should not be null");
     JsonSerialization serialization = new JsonSerialization(lionWebVersion);
     standardInitialization(serialization);
+    return serialization;
+  }
+
+  /**
+   * Same as {@link #getStandardJsonSerialization(LionWebVersion)},
+   * but {@link AbstractSerialization#serializeEmptyFeatures omits empty features}.
+   */
+  public static JsonSerialization getEfficientJsonSerialization(
+      @Nonnull LionWebVersion lionWebVersion) {
+    JsonSerialization serialization = getStandardJsonSerialization();
+    serialization.setSerializeEmptyFeatures(false);
     return serialization;
   }
 
@@ -43,6 +55,17 @@ public class SerializationProvider {
   /** This has specific support for LionCore or LionCoreBuiltins. */
   public static ProtoBufSerialization getStandardProtoBufSerialization() {
     return getStandardProtoBufSerialization(LionWebVersion.currentVersion);
+  }
+
+  /**
+   * Same as {@link #getStandardProtoBufSerialization(LionWebVersion)},
+   * but {@link AbstractSerialization#serializeEmptyFeatures omits empty features}.
+   */
+  public static ProtoBufSerialization getEfficientProtoBufSerialization(
+          @Nonnull LionWebVersion lionWebVersion) {
+    ProtoBufSerialization serialization = getStandardProtoBufSerialization(lionWebVersion);
+    serialization.setSerializeEmptyFeatures(false);
+    return serialization;
   }
 
   /** This has no specific support for LionCore or LionCoreBuiltins. */
