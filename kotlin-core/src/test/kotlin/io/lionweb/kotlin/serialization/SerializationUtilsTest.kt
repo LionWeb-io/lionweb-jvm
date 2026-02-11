@@ -10,6 +10,7 @@ import io.lionweb.serialization.data.SerializationChunk
 import io.lionweb.serialization.data.SerializedClassifierInstance
 import io.lionweb.serialization.data.SerializedContainmentValue
 import io.lionweb.serialization.data.SerializedPropertyValue
+import io.lionweb.serialization.data.SerializedReferenceValue
 import java.util.Arrays
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -72,6 +73,11 @@ class SerializationUtilsTest {
                                 Arrays.asList("mylanguage-MyConcept-id", "mylanguage-MyInterface-id"),
                             ),
                         )
+                        unsafeAppendReferenceValue(
+                            SerializedReferenceValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Language-dependsOn"),
+                            ),
+                        )
                     }
                 addClassifierInstance(sc1)
                 val sc2 =
@@ -94,6 +100,21 @@ class SerializationUtilsTest {
                                 "MyConcept",
                             ),
                         )
+                        unsafeAppendContainmentValue(
+                            SerializedContainmentValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Classifier-features"),
+                            ),
+                        )
+                        unsafeAppendReferenceValue(
+                            SerializedReferenceValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-extends"),
+                            ),
+                        )
+                        unsafeAppendReferenceValue(
+                            SerializedReferenceValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Concept-implements"),
+                            ),
+                        )
                         parentNodeID = sc1.id
                     }
                 addClassifierInstance(sc2)
@@ -111,6 +132,16 @@ class SerializationUtilsTest {
                             SerializedPropertyValue.get(
                                 MetaPointer.get("LionCore-builtins", "2024.1", "LionCore-builtins-INamed-name"),
                                 "MyInterface",
+                            ),
+                        )
+                        unsafeAppendContainmentValue(
+                            SerializedContainmentValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Classifier-features"),
+                            ),
+                        )
+                        unsafeAppendReferenceValue(
+                            SerializedReferenceValue(
+                                MetaPointer.get("LionCore-M3", "2024.1", "Interface-extends"),
                             ),
                         )
                         parentNodeID = sc1.id

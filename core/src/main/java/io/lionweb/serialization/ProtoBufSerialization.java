@@ -106,11 +106,13 @@ public class ProtoBufSerialization extends AbstractSerialization {
               n.getPropertiesList()
                   .forEach(
                       p -> {
-                        SerializedPropertyValue spv =
-                            SerializedPropertyValue.get(
-                                metapointersArray[p.getMpiMetaPointer()],
-                                stringsArray[p.getSiValue()]);
-                        sci.unsafeAppendPropertyValue(spv);
+                        int siValue = p.getSiValue();
+                        if (serializeEmptyFeatures || siValue != 0) {
+                          SerializedPropertyValue spv =
+                              SerializedPropertyValue.get(
+                                  metapointersArray[p.getMpiMetaPointer()], stringsArray[siValue]);
+                          sci.unsafeAppendPropertyValue(spv);
+                        }
                       });
               n.getContainmentsList()
                   .forEach(
@@ -123,7 +125,7 @@ public class ProtoBufSerialization extends AbstractSerialization {
                           }
                           children.add(stringsArray[childIndex]);
                         }
-                        if (!children.isEmpty()) {
+                        if (serializeEmptyFeatures || !children.isEmpty()) {
                           SerializedContainmentValue scv =
                               new SerializedContainmentValue(
                                   metapointersArray[c.getMpiMetaPointer()], children);
@@ -144,7 +146,7 @@ public class ProtoBufSerialization extends AbstractSerialization {
                                   entry.setResolveInfo(stringsArray[rv.getSiResolveInfo()]);
                                   srv.addValue(entry);
                                 });
-                        if (!srv.getValue().isEmpty()) {
+                        if (serializeEmptyFeatures || !srv.getValue().isEmpty()) {
                           sci.unsafeAppendReferenceValue(srv);
                         }
                       });
@@ -286,31 +288,38 @@ public class ProtoBufSerialization extends AbstractSerialization {
       n.getProperties()
           .forEach(
               p -> {
-                PBProperty.Builder b = PBProperty.newBuilder();
-                if (p.getValue() != null) {
-                  b.setSiValue(this.stringIndexer(p.getValue()));
+                String propertyValue = p.getValue();
+                if (serializeEmptyFeatures || propertyValue != null) {
+                  PBProperty.Builder b = PBProperty.newBuilder();
+                  b.setSiValue(this.stringIndexer(propertyValue));
+                  b.setMpiMetaPointer(this.metaPointerIndexer(p.getMetaPointer()));
+                  nodeBuilder.addProperties(b.build());
                 }
-                b.setMpiMetaPointer(this.metaPointerIndexer(p.getMetaPointer()));
-                nodeBuilder.addProperties(b.build());
               });
       n.getContainments()
           .forEach(
-              p ->
+              p -> {
+                List<String> childrenIds = p.getChildrenIds();
+                if (serializeEmptyFeatures || !childrenIds.isEmpty()) {
                   nodeBuilder.addContainments(
                       PBContainment.newBuilder()
                           .addAllSiChildren(
-                              p.getChildrenIds().stream()
+                              childrenIds.stream()
                                   .map(this::stringIndexer)
                                   .collect(Collectors.toList()))
                           .setMpiMetaPointer(this.metaPointerIndexer(p.getMetaPointer()))
-                          .build()));
+                          .build());
+                }
+              });
       n.getReferences()
           .forEach(
-              p ->
+              p -> {
+                List<SerializedReferenceValue.Entry> referenceEntries = p.getValue();
+                if (serializeEmptyFeatures || !referenceEntries.isEmpty()) {
                   nodeBuilder.addReferences(
                       PBReference.newBuilder()
                           .addAllValues(
-                              p.getValue().stream()
+                              referenceEntries.stream()
                                   .map(
                                       rf -> {
                                         PBReferenceValue.Builder b = PBReferenceValue.newBuilder();
@@ -325,7 +334,9 @@ public class ProtoBufSerialization extends AbstractSerialization {
                                       })
                                   .collect(Collectors.toList()))
                           .setMpiMetaPointer(this.metaPointerIndexer(p.getMetaPointer()))
-                          .build()));
+                          .build());
+                }
+              });
       n.getAnnotations().forEach(a -> nodeBuilder.addSiAnnotations(this.stringIndexer(a)));
       return nodeBuilder.build();
     }

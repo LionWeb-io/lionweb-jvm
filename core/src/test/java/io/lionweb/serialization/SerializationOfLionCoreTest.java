@@ -77,10 +77,11 @@ public class SerializationOfLionCoreTest extends SerializationTest {
                     "-id-Property",
                     "-id-Reference"))),
         LionCore_M3.getContainments());
-    // Depends is empty and this is wrong but see
-    // https://github.com/LionWeb-io/specification/issues/380
-    // to understand the reason. And given it is empty it is not serialized
-    assertEquals(Collections.emptyList(), LionCore_M3.getReferences());
+    assertEquals(
+        Collections.singletonList(
+            new SerializedReferenceValue(
+                MetaPointer.get("LionCore-M3", "2023.1", "Language-dependsOn"))),
+        LionCore_M3.getReferences());
 
     SerializedClassifierInstance LionCore_M3_Interface_extends =
         serializationChunk.getClassifierInstances().stream()
@@ -146,8 +147,11 @@ public class SerializationOfLionCoreTest extends SerializationTest {
     // This is the case because any Language depends (at least transitively and implicitly) on
     // built-ins elements, a Language CAN declare a dependency on builtins but does not need to and
     // for LionCore we decided NOT to list the dependency on LionCore-Builtins
-    // Then given the reference is empty, it is not serialized at all
-    assertEquals(Collections.emptyList(), LionCore_M3.getReferences());
+    assertEquals(
+        Collections.singletonList(
+            new SerializedReferenceValue(
+                MetaPointer.get("LionCore-M3", "2024.1", "Language-dependsOn"))),
+        LionCore_M3.getReferences());
 
     SerializedClassifierInstance LionCore_M3_Interface_extends =
         serializationChunk.getClassifierInstances().stream()

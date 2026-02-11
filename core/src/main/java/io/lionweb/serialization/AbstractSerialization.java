@@ -52,6 +52,9 @@ public abstract class AbstractSerialization {
   protected UnavailableNodePolicy unavailableReferenceTargetPolicy =
       UnavailableNodePolicy.THROW_ERROR;
 
+  /** Whether we include (true) or omit (false) empty features in serialization. */
+  protected boolean serializeEmptyFeatures = true;
+
   private final @Nonnull LionWebVersion lionWebVersion;
 
   protected boolean builtinsReferenceDangling = false;
@@ -124,6 +127,10 @@ public abstract class AbstractSerialization {
     return this.unavailableChildrenPolicy;
   }
 
+  public boolean shouldSerializeEmptyFeatures() {
+    return serializeEmptyFeatures;
+  }
+
   public void setAllUnavailabilityPolicies(@Nonnull UnavailableNodePolicy unavailabilityPolicy) {
     Objects.requireNonNull(unavailabilityPolicy);
     this.unavailableChildrenPolicy = unavailabilityPolicy;
@@ -146,6 +153,10 @@ public abstract class AbstractSerialization {
       @Nonnull UnavailableNodePolicy unavailableReferenceTargetPolicy) {
     Objects.requireNonNull(unavailableReferenceTargetPolicy);
     this.unavailableReferenceTargetPolicy = unavailableReferenceTargetPolicy;
+  }
+
+  public void setSerializeEmptyFeatures(boolean serializeEmptyFeatures) {
+    this.serializeEmptyFeatures = serializeEmptyFeatures;
   }
 
   public void registerLanguage(Language language) {
@@ -259,7 +270,7 @@ public abstract class AbstractSerialization {
             .collect(Collectors.toList()));
   }
 
-  private static void serializeReferences(
+  private void serializeReferences(
       @Nonnull ClassifierInstance<?> classifierInstance,
       SerializedClassifierInstance serializedClassifierInstance,
       boolean builtinsReferenceDangling,
@@ -283,7 +294,7 @@ public abstract class AbstractSerialization {
                                 referredID, rv.getResolveInfo());
                           })
                       .collect(Collectors.toList());
-              if (!entries.isEmpty()) {
+              if (serializeEmptyFeatures || !entries.isEmpty()) {
                 MetaPointer metaPointer =
                     MetaPointer.from(
                         reference, ((LanguageEntity<?>) reference.getContainer()).getLanguage());
@@ -294,7 +305,7 @@ public abstract class AbstractSerialization {
             });
   }
 
-  private static void serializeContainments(
+  private void serializeContainments(
       @Nonnull ClassifierInstance<?> classifierInstance,
       SerializedClassifierInstance serializedClassifierInstance,
       SerializationStatus serializationStatus) {
@@ -308,7 +319,7 @@ public abstract class AbstractSerialization {
                       .map(Node::getID)
                       .collect(Collectors.toList());
               // We can avoid serializing empty values
-              if (!value.isEmpty()) {
+              if (serializeEmptyFeatures || !value.isEmpty()) {
                 MetaPointer metaPointer =
                     MetaPointer.from(
                         containment,
@@ -328,13 +339,15 @@ public abstract class AbstractSerialization {
         .allProperties(classifierInstance.getClassifier())
         .forEach(
             property -> {
-              SerializedPropertyValue propertyValue =
-                  SerializedPropertyValue.get(
-                      MetaPointer.from(
-                          property, ((LanguageEntity<?>) property.getContainer()).getLanguage()),
-                      serializePropertyValue(
-                          property.getType(), classifierInstance.getPropertyValue(property)));
-              serializedClassifierInstance.unsafeAppendPropertyValue(propertyValue);
+              Object propertyValue = classifierInstance.getPropertyValue(property);
+              if (serializeEmptyFeatures || propertyValue != null) {
+                SerializedPropertyValue serializedValue =
+                    SerializedPropertyValue.get(
+                        MetaPointer.from(
+                            property, ((LanguageEntity<?>) property.getContainer()).getLanguage()),
+                        serializePropertyValue(property.getType(), propertyValue));
+                serializedClassifierInstance.unsafeAppendPropertyValue(serializedValue);
+              }
             });
   }
 

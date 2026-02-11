@@ -9,13 +9,18 @@ import io.lionweb.LionWebVersion;
 import io.lionweb.language.Concept;
 import io.lionweb.language.Language;
 import io.lionweb.language.Property;
+import io.lionweb.model.ClassifierInstance;
 import io.lionweb.model.ClassifierInstanceUtils;
 import io.lionweb.model.Node;
 import io.lionweb.model.impl.ProxyNode;
+import io.lionweb.serialization.data.SerializationChunk;
+import io.lionweb.serialization.data.SerializedClassifierInstance;
+import io.lionweb.utils.ModelComparator;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -231,5 +236,55 @@ public class SerializationOfLibraryTest extends SerializationTest {
             .allMatch(
                 n ->
                     n.getParent() instanceof ProxyNode && n.getParent().getID().equals("library")));
+  }
+
+  @Test
+  public void serializeEmptyFeatures() {
+    Library libA = new Library("libA", "libA");
+    Book bookA = new Book("bookA");
+    Library libB = new Library("libB", "libB");
+    Book bookB = new Book("bookB");
+    libB.addBook(bookB);
+    Writer writer = new Writer("writer");
+    bookB.setAuthor(writer);
+    List<ClassifierInstance<?>> nodes = Arrays.asList(libA, bookA, libB, bookB, writer);
+
+    JsonSerialization standardSerialization =
+        SerializationProvider.getStandardJsonSerialization(LionWebVersion.v2023_1);
+    SerializationChunk standardChunk =
+        standardSerialization.serializeNodesToSerializationChunk(nodes);
+    SerializedClassifierInstance standardLibA = standardChunk.getInstanceByID("libA");
+    assertEquals(1, standardLibA.getContainments().size());
+    SerializedClassifierInstance standardBookA = standardChunk.getInstanceByID("bookA");
+    assertEquals(2, standardBookA.getProperties().size());
+    assertEquals(1, standardBookA.getReferences().size());
+    SerializedClassifierInstance standardLibB = standardChunk.getInstanceByID("libB");
+    assertEquals(1, standardLibB.getContainments().size());
+    SerializedClassifierInstance standardBookB = standardChunk.getInstanceByID("bookB");
+    assertEquals(2, standardBookB.getProperties().size());
+    assertEquals(1, standardBookB.getReferences().size());
+
+    JsonSerialization efficientSerialization =
+        SerializationProvider.getEfficientJsonSerialization(LionWebVersion.v2023_1);
+    SerializationChunk efficientChunk =
+        efficientSerialization.serializeNodesToSerializationChunk(nodes);
+    SerializedClassifierInstance efficientLibA = efficientChunk.getInstanceByID("libA");
+    assertEquals(1, efficientLibA.getProperties().size());
+    assertEquals(0, efficientLibA.getContainments().size());
+    SerializedClassifierInstance efficientBookA = efficientChunk.getInstanceByID("bookA");
+    assertEquals(0, efficientBookA.getProperties().size());
+    assertEquals(0, efficientBookA.getReferences().size());
+    SerializedClassifierInstance efficientLibB = efficientChunk.getInstanceByID("libB");
+    assertEquals(1, efficientLibB.getProperties().size());
+    assertEquals(1, efficientLibB.getContainments().size());
+    SerializedClassifierInstance efficientBookB = efficientChunk.getInstanceByID("bookB");
+    assertEquals(0, efficientBookB.getProperties().size());
+    assertEquals(1, efficientBookB.getReferences().size());
+
+    efficientSerialization.registerLanguage(LibraryLanguage.LIBRARY_MM);
+    efficientSerialization.enableDynamicNodes();
+    List<ClassifierInstance<?>> deserialized =
+        efficientSerialization.deserializeSerializationChunk(efficientChunk);
+    assertTrue(ModelComparator.areEquivalent(nodes, deserialized));
   }
 }

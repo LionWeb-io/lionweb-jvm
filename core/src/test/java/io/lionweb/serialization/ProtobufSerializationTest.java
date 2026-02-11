@@ -18,6 +18,8 @@ import io.lionweb.serialization.refsmm.RefsLanguage;
 import io.lionweb.serialization.simplemath.IntLiteral;
 import io.lionweb.serialization.simplemath.SimpleMathLanguage;
 import io.lionweb.serialization.simplemath.Sum;
+import io.lionweb.utils.ModelComparator;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -588,6 +590,87 @@ public class ProtobufSerializationTest extends SerializationTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> serialization.serializeNodesToByteArray(Collections.singletonList(proxy)));
+  }
+
+  @Test
+  public void serializeEmptyFeatures_Protobuf() throws IOException {
+    Library libA = new Library("libA", "libA");
+    Book bookA = new Book("bookA");
+    Library libB = new Library("libB", "libB");
+    Book bookB = new Book("bookB");
+    libB.addBook(bookB);
+    Writer writer = new Writer("writer");
+    bookB.setAuthor(writer);
+    List<ClassifierInstance<?>> nodes = Arrays.asList(libA, bookA, libB, bookB, writer);
+
+    ProtoBufSerialization standardSerialization =
+        SerializationProvider.getStandardProtoBufSerialization(LionWebVersion.v2023_1);
+    byte[] standardBytes = standardSerialization.serializeNodesToByteArray(nodes);
+    SerializationChunk standardChunk = standardSerialization.deserializeToChunk(standardBytes);
+    SerializedClassifierInstance standardLibA = standardChunk.getInstanceByID("libA");
+    assertEquals(1, standardLibA.getContainments().size());
+    SerializedClassifierInstance standardBookA = standardChunk.getInstanceByID("bookA");
+    assertEquals(2, standardBookA.getProperties().size());
+    assertEquals(1, standardBookA.getReferences().size());
+    SerializedClassifierInstance standardLibB = standardChunk.getInstanceByID("libB");
+    assertEquals(1, standardLibB.getContainments().size());
+    SerializedClassifierInstance standardBookB = standardChunk.getInstanceByID("bookB");
+    assertEquals(2, standardBookB.getProperties().size());
+    assertEquals(1, standardBookB.getReferences().size());
+
+    ProtoBufSerialization efficientSerialization =
+        SerializationProvider.getEfficientProtoBufSerialization(LionWebVersion.v2023_1);
+    byte[] efficientBytes = efficientSerialization.serializeNodesToByteArray(nodes);
+    SerializationChunk efficientChunk = efficientSerialization.deserializeToChunk(efficientBytes);
+    SerializedClassifierInstance efficientLibA = efficientChunk.getInstanceByID("libA");
+    assertEquals(1, efficientLibA.getProperties().size());
+    assertEquals(0, efficientLibA.getContainments().size());
+    SerializedClassifierInstance efficientBookA = efficientChunk.getInstanceByID("bookA");
+    assertEquals(0, efficientBookA.getProperties().size());
+    assertEquals(0, efficientBookA.getReferences().size());
+    SerializedClassifierInstance efficientLibB = efficientChunk.getInstanceByID("libB");
+    assertEquals(1, efficientLibB.getProperties().size());
+    assertEquals(1, efficientLibB.getContainments().size());
+    SerializedClassifierInstance efficientBookB = efficientChunk.getInstanceByID("bookB");
+    assertEquals(0, efficientBookB.getProperties().size());
+    assertEquals(1, efficientBookB.getReferences().size());
+
+    PBChunk pbChunk = PBChunk.parseFrom(new ByteArrayInputStream(efficientBytes));
+    List<PBNode> nodesList = pbChunk.getNodesList();
+    PBNode pbLibA = nodesList.get(0);
+    assertEquals(1, pbLibA.getPropertiesCount());
+    assertEquals(0, pbLibA.getContainmentsCount());
+    PBNode pbBookA = nodesList.get(1);
+    assertEquals(0, pbBookA.getPropertiesCount());
+    assertEquals(0, pbBookA.getReferencesCount());
+    PBNode pbLibB = nodesList.get(2);
+    assertEquals(1, pbLibB.getPropertiesCount());
+    assertEquals(1, pbLibB.getContainmentsCount());
+    PBNode pbBookB = nodesList.get(3);
+    assertEquals(0, pbBookB.getPropertiesCount());
+    assertEquals(1, pbBookB.getReferencesCount());
+
+    byte[] mixedBytes = efficientSerialization.serializeToByteArray(standardChunk);
+    PBChunk pbMixedChunk = PBChunk.parseFrom(new ByteArrayInputStream(mixedBytes));
+    List<PBNode> mixedNodesList = pbMixedChunk.getNodesList();
+    PBNode pbMixedLibA = mixedNodesList.get(0);
+    assertEquals(0, pbMixedLibA.getContainmentsCount());
+    PBNode pbMixedBookA = mixedNodesList.get(1);
+    assertEquals(0, pbMixedBookA.getPropertiesCount());
+    assertEquals(0, pbMixedBookA.getReferencesCount());
+    PBNode pbMixedLibB = mixedNodesList.get(2);
+    assertEquals(1, pbMixedLibB.getContainmentsCount());
+    PBNode pbMixedBookB = mixedNodesList.get(3);
+    assertEquals(0, pbMixedBookB.getPropertiesCount());
+    assertEquals(1, pbMixedBookB.getReferencesCount());
+
+    efficientSerialization.registerLanguage(LibraryLanguage.LIBRARY_MM);
+    efficientSerialization.enableDynamicNodes();
+    List<ClassifierInstance<?>> deserializedChunk =
+        efficientSerialization.deserializeSerializationChunk(efficientChunk);
+    assertTrue(ModelComparator.areEquivalent(nodes, deserializedChunk));
+    List<Node> deserializedBytes = efficientSerialization.deserializeToNodes(efficientBytes);
+    assertTrue(ModelComparator.areEquivalent(nodes, deserializedBytes));
   }
 
   private void assertSerializationChunkContainsLanguage(
