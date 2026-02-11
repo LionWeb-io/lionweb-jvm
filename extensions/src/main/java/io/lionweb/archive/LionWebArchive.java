@@ -123,7 +123,7 @@ public class LionWebArchive {
     LionWebVersion lionWebVersion = LionWebVersion.fromValue(metadata.getProperty(LW_VERION_KEY));
     loader.setLwVersion(lionWebVersion);
     ProtoBufSerialization serialization =
-        SerializationProvider.getStandardProtoBufSerialization(lionWebVersion);
+        SerializationProvider.getEfficientProtoBufSerialization(lionWebVersion);
 
     // Languages
     try (InputStream fileIn =
@@ -366,7 +366,7 @@ public class LionWebArchive {
       String partitionId = getPartitionId(chunk);
       String entryName = dirPrefix + "/" + partitionId + ".binpb";
       ProtoBufSerialization ser =
-          SerializationProvider.getStandardProtoBufSerialization(lionWebVersion);
+          SerializationProvider.getEfficientProtoBufSerialization(lionWebVersion);
       try {
         byte[] data = ser.serializeToByteArray(chunk);
         List<ZipChunk> result = new ArrayList<ZipChunk>(1);
@@ -385,7 +385,7 @@ public class LionWebArchive {
         new ThreadLocal<ProtoBufSerialization>() {
           @Override
           protected ProtoBufSerialization initialValue() {
-            return SerializationProvider.getStandardProtoBufSerialization(lionWebVersion);
+            return SerializationProvider.getEfficientProtoBufSerialization(lionWebVersion);
           }
         };
 
