@@ -32,10 +32,10 @@ import io.lionweb.client.delta.messages.events.references.ReferenceAdded
 import io.lionweb.client.delta.messages.events.references.ReferenceChanged
 import io.lionweb.client.delta.messages.events.references.ReferenceDeleted
 import io.lionweb.client.delta.messages.queries.ListAndSubscribePartitionsRequest
-import io.lionweb.client.delta.messages.queries.partitcipations.ReconnectRequest
-import io.lionweb.client.delta.messages.queries.partitcipations.SignOffRequest
-import io.lionweb.client.delta.messages.queries.partitcipations.SignOnRequest
-import io.lionweb.client.delta.messages.queries.partitcipations.SignOnResponse
+import io.lionweb.client.delta.messages.queries.participations.ReconnectRequest
+import io.lionweb.client.delta.messages.queries.participations.SignOffRequest
+import io.lionweb.client.delta.messages.queries.participations.SignOnRequest
+import io.lionweb.client.delta.messages.queries.participations.SignOnResponse
 import io.lionweb.client.delta.messages.queries.subscriptions.SubscribeToPartitionContentsRequest
 import io.lionweb.client.delta.messages.queries.subscriptions.UnsubscribeFromPartitionContentsRequest
 import io.lionweb.client.inmemory.InMemoryServer

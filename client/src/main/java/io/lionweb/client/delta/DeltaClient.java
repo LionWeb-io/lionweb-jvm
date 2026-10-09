@@ -37,7 +37,7 @@ import io.lionweb.client.delta.messages.queries.ListAndSubscribePartitionsReques
 import io.lionweb.client.delta.messages.queries.ListAndSubscribePartitionsResponse;
 import io.lionweb.client.delta.messages.queries.ListPartitionsRequest;
 import io.lionweb.client.delta.messages.queries.ListPartitionsResponse;
-import io.lionweb.client.delta.messages.queries.partitcipations.*;
+import io.lionweb.client.delta.messages.queries.participations.*;
 import io.lionweb.client.delta.messages.queries.subscriptions.SubscribeToPartitionContentsRequest;
 import io.lionweb.client.delta.messages.queries.subscriptions.SubscribeToPartitionContentsResponse;
 import io.lionweb.client.delta.messages.queries.subscriptions.UnsubscribeFromPartitionContentsRequest;
