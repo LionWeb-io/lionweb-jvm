@@ -18,7 +18,7 @@ jobs:
         distribution: 'temurin'
         java-version: ${{ matrix.java }}
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6.2.0
     - name: Check formatting
       run: ./gradlew spotlessCheck
     - name: Test
@@ -46,7 +46,7 @@ jobs:
         distribution: 'temurin'
         java-version: ${{ matrix.java }}
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6.2.0
     - name: Pre-pull Docker images
       run: docker pull postgres:16.1
     - name: Functional Tests
@@ -74,7 +74,7 @@ jobs:
         distribution: 'temurin'
         java-version: ${{ matrix.java }}
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6.2.0
     - name: Core Integration Tests
       run: ./gradlew :core:integrationTest --stacktrace --info
     - name: Upload test results
@@ -100,7 +100,7 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6.2.0
       - name: Client Integration Tests
         run: ./gradlew :client:integrationTest --stacktrace --info
       - name: Upload test results
@@ -126,7 +126,7 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6.2.0
       - name: Server Integration Tests
         run: ./gradlew :server:integrationTest --stacktrace --info
       - name: Upload test results
@@ -152,7 +152,7 @@ jobs:
         distribution: 'temurin'
         java-version: ${{ matrix.java }}
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6.2.0
     - name: Plugin Integration Tests
       run: ./gradlew :gradle-plugin:integrationTest
     - name: Upload test results
@@ -175,6 +175,6 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6.2.0
     - name: Javadoc generation
       run: ./gradlew myJavadoc
