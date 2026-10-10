@@ -16,6 +16,7 @@ import io.lionweb.client.delta.messages.commands.references.AddReference;
 import io.lionweb.client.delta.messages.commands.references.ChangeReference;
 import io.lionweb.client.delta.messages.commands.references.DeleteReference;
 import io.lionweb.client.delta.messages.events.ClassifierChanged;
+import io.lionweb.client.delta.messages.events.CustomErrorCode;
 import io.lionweb.client.delta.messages.events.ErrorEvent;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.events.annotations.*;
@@ -33,6 +34,7 @@ import io.lionweb.serialization.data.SerializedReferenceValue;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Implementation of {@link DeltaCommandReceiver} that receives commands from the server and applies
@@ -58,12 +60,10 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   @Override
   public void receiveCommand(@NotNull String participationId, @NotNull DeltaCommand command) {
     if (!participationManager.isActiveParticipation(participationId)) {
-      channel.sendEvent(
-          sequenceNumber ->
-              new ErrorEvent(
-                  sequenceNumber,
-                  StandardErrorCode.INVALID_PARTICIPATION,
-                  "Invalid participation: " + participationId));
+      sendError(
+          StandardErrorCode.INVALID_PARTICIPATION.code,
+          "Invalid participation: " + participationId,
+          null);
       return;
     }
     CommandSource source = new CommandSource(participationId, command.commandId);
@@ -108,13 +108,28 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
       else if (command instanceof AddPartition) handleAddPartition((AddPartition) command, source);
       else if (command instanceof DeletePartition)
         handleDeletePartition((DeletePartition) command, data, source);
-      else
-        throw new UnsupportedOperationException(
-            "Unsupported command type: " + command.getClass().getName());
+      else sendNotImplemented(command, source);
     } catch (NodeNotFoundException e) {
-      String msg = e.getMessage();
-      channel.sendEvent(seqNum -> new ErrorEvent(seqNum, StandardErrorCode.UNKNOWN_NODE, msg));
+      sendError(StandardErrorCode.UNKNOWN_NODE.code, e.getMessage(), null);
     }
+  }
+
+  /** Sends an error event for a recognized command that this server does not implement. */
+  private void sendNotImplemented(@NotNull DeltaCommand command, @NotNull CommandSource source) {
+    sendError(
+        CustomErrorCode.NOT_IMPLEMENTED,
+        "Unsupported command type: " + command.getClass().getName(),
+        source);
+  }
+
+  /** Sends an error event, optionally attributing it to the command that caused it. */
+  private void sendError(
+      @NotNull String errorCode, @Nullable String message, @Nullable CommandSource source) {
+    channel.sendEvent(
+        seqNum -> {
+          ErrorEvent event = new ErrorEvent(seqNum, errorCode, message);
+          return source == null ? event : event.addSource(source);
+        });
   }
 
   private void handleChangeProperty(ChangeProperty cmd, RepositoryData data, CommandSource source) {
