@@ -5,8 +5,8 @@ import io.lionweb.LionWebVersion
 import io.lionweb.client.delta.DeltaClient
 import io.lionweb.client.delta.DeltaMessageSerialization
 import io.lionweb.client.delta.messages.DeltaCommand
-import io.lionweb.client.delta.messages.queries.partitcipations.ReconnectRequest
-import io.lionweb.client.delta.messages.queries.partitcipations.ReconnectResponse
+import io.lionweb.client.delta.messages.queries.participations.ReconnectRequest
+import io.lionweb.client.delta.messages.queries.participations.ReconnectResponse
 import io.lionweb.language.Concept
 import io.lionweb.language.Language
 import io.lionweb.model.Node

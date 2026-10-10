@@ -45,7 +45,7 @@ import javax.annotation.Nullable;
  */
 public class LionWebArchive {
 
-  public static final String LW_VERION_KEY = "LionWeb-Version";
+  public static final String LW_VERSION_KEY = "LionWeb-Version";
 
   private LionWebArchive() {}
 
@@ -116,11 +116,11 @@ public class LionWebArchive {
     if (metadata == null) {
       throw new IllegalArgumentException("No Metadata.properties file found in archive");
     }
-    if (!metadata.containsKey(LW_VERION_KEY)) {
+    if (!metadata.containsKey(LW_VERSION_KEY)) {
       throw new IllegalArgumentException(
-          "No " + LW_VERION_KEY + " property found in metadata.properties");
+          "No " + LW_VERSION_KEY + " property found in metadata.properties");
     }
-    LionWebVersion lionWebVersion = LionWebVersion.fromValue(metadata.getProperty(LW_VERION_KEY));
+    LionWebVersion lionWebVersion = LionWebVersion.fromValue(metadata.getProperty(LW_VERSION_KEY));
     loader.setLwVersion(lionWebVersion);
     ProtoBufSerialization serialization =
         SerializationProvider.getEfficientProtoBufSerialization(lionWebVersion);
@@ -283,7 +283,7 @@ public class LionWebArchive {
 
     // Store metadata
     Properties metadata = new Properties();
-    metadata.setProperty(LW_VERION_KEY, lionWebVersion.getVersionString());
+    metadata.setProperty(LW_VERSION_KEY, lionWebVersion.getVersionString());
 
     // Pre-serialize chunks in parallel (now with per-thread ProtoBufSerialization)
     List<ZipChunk> languageEntries =

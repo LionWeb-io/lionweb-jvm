@@ -1,4 +1,4 @@
-package io.lionweb.client.delta.messages.queries.partitcipations;
+package io.lionweb.client.delta.messages.queries.participations;
 
 import io.lionweb.client.delta.messages.DeltaQuery;
 import org.jetbrains.annotations.NotNull;

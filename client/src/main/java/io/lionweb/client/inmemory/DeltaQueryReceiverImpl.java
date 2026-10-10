@@ -6,7 +6,7 @@ import io.lionweb.client.delta.messages.DeltaQuery;
 import io.lionweb.client.delta.messages.DeltaQueryResponse;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.queries.*;
-import io.lionweb.client.delta.messages.queries.partitcipations.*;
+import io.lionweb.client.delta.messages.queries.participations.*;
 import io.lionweb.client.delta.messages.queries.subscriptions.SubscribeToPartitionContentsRequest;
 import io.lionweb.client.delta.messages.queries.subscriptions.SubscribeToPartitionContentsResponse;
 import io.lionweb.client.delta.messages.queries.subscriptions.UnsubscribeFromPartitionContentsRequest;
