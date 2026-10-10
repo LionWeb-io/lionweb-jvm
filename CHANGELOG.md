@@ -1,5 +1,12 @@
 # Changelog
 
+### Version 1.4.6
+
+* Remove the unneeded `RawReferenceValue` class (issue #432)
+* Fix typos in public names: rename package `io.lionweb.client.delta.messages.queries.partitcipations` to `participations`, and `LionWebArchive.LW_VERION_KEY` to `LW_VERSION_KEY`
+* README: clarify Java requirements (published libraries require Java 11+, the Gradle plugin and building the project require Java 17+), fix the Maven coordinates in the usage example, and add a short project description
+* Bump dependencies: kotest 6.2.3, javapoet 0.18.0, Spotless 8.9.0, ben-manes versions plugin 0.58.0, `actions/setup-java` v6, `gradle/actions` 6.2.0
+
 ### Version 1.4.5
 
 * Fix how some references are saved in M3

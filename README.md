@@ -3,9 +3,11 @@
 ![Maven Central Version](https://img.shields.io/maven-central/v/io.lionweb/lionweb-2024.1-core)
 ![Build](https://github.com/LionWeb-io/lionweb-java/actions/workflows/ci.yml/badge.svg)
 
-The libraries produced by this project requires Java 11 or higher.
+LionWeb JVM is the JVM implementation of the [LionWeb](https://lionweb.io) specification, providing libraries for Java and Kotlin.
 
-The actual execution of the project requires Java 17 or higher. We support and test on Java 17, 21, and 25.
+The published libraries require Java 11 or higher (the Gradle plugin requires Java 17 or higher).
+
+Building the project requires Java 17 or higher. We support and test on Java 17, 21, and 25.
 
 ## Documentation
 
@@ -16,20 +18,20 @@ Take a look at the [Documentation](https://lionweb.io/lionweb-java).
 While new features are being added, and the project is evolving, the core features are solidly implemented. 
 The library is mature and used in production.
 
-The project is actively maintained. Feel free to open issues to ask any question, help, 
+The project is actively maintained. Feel free to open issues to ask questions or to request help 
 or support.
 
 For visibility on the future plans regarding this project refer to the [Roadmap](ROADMAP.md).
 
-Currently the project is on-par with the LionWeb specifications.
+Currently the project is on par with the LionWeb specification.
 
-In particular, this library supports both version 2023.1 and 2024.1 of the specs.
+In particular, this library supports both versions 2023.1 and 2024.1 of the specification.
 
 ## Using the library
 
-```
+```kotlin
 dependencies {
-   implementation("io.lionweb.lionweb-java:lionweb-java-2024.1-core:$lionwebVersion")
+    implementation("io.lionweb:lionweb-2024.1-core:$lionwebVersion")
 }
 ```
 
@@ -158,7 +160,7 @@ Or run directly from your IDE by executing the `main` method in each benchmark c
 
 This project is part of the [LionWeb](https://lionweb.io) initiative.
 
-The project is currently maintained by Federico Tomassetti with contributions from:
+The project is currently maintained by [Federico Tomassetti](https://tomassetti.me) with contributions from:
 * Ulyana Tikhonova
 * Meinte Boersma
 * Niko Stotz
