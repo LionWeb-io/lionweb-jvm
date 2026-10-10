@@ -6,6 +6,11 @@
 * Fix typos in public names: rename package `io.lionweb.client.delta.messages.queries.partitcipations` to `participations`, and `LionWebArchive.LW_VERION_KEY` to `LW_VERSION_KEY`
 * README: clarify Java requirements (published libraries require Java 11+, the Gradle plugin and building the project require Java 17+), fix the Maven coordinates in the usage example, and add a short project description
 * Bump dependencies: kotest 6.2.3, javapoet 0.18.0, Spotless 8.9.0, ben-manes versions plugin 0.58.0, `actions/setup-java` v6, `gradle/actions` 6.2.0
+* In-memory delta server: track subscriptions and the last sequence number sent to each participation. Content events are sent only to participations subscribed to the affected partitions, partition events also to participations subscribed to the partition list, and error events only to the participation that issued the command. Deleting a partition removes all subscriptions to it, as required by the specification. `ReconnectResponse` now reports the last sent sequence number. `DeltaChannel` gains `supportsTargetedEvents()` and `sendEvent(participationId, ...)` (issue #427)
+* In-memory delta server: answer unsupported queries and commands with a protocol error (`Custom_notImplemented`) instead of throwing (issue #426)
+* In-memory delta server: `DeleteChild` now removes the child and its descendants from the repository and reports the deleted descendants in `ChildDeleted` (issue #425)
+* `DeltaClient`: support `ReplaceAnnotation` commands (`sendReplaceAnnotationCommand`) and `AnnotationReplaced` events (issue #429)
+* Add tests for the `DeltaClient` commands that move children between containments of the same parent and add, delete and move annotations (issue #430)
 
 ### Version 1.4.5
 
