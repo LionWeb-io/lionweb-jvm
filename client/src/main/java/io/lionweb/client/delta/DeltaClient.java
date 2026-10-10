@@ -9,6 +9,7 @@ import io.lionweb.client.delta.messages.commands.annotations.AddAnnotation;
 import io.lionweb.client.delta.messages.commands.annotations.DeleteAnnotation;
 import io.lionweb.client.delta.messages.commands.annotations.MoveAnnotationFromOtherParent;
 import io.lionweb.client.delta.messages.commands.annotations.MoveAnnotationInSameParent;
+import io.lionweb.client.delta.messages.commands.annotations.ReplaceAnnotation;
 import io.lionweb.client.delta.messages.commands.children.*;
 import io.lionweb.client.delta.messages.commands.partitions.AddPartition;
 import io.lionweb.client.delta.messages.commands.partitions.DeletePartition;
@@ -24,6 +25,7 @@ import io.lionweb.client.delta.messages.events.annotations.AnnotationAdded;
 import io.lionweb.client.delta.messages.events.annotations.AnnotationDeleted;
 import io.lionweb.client.delta.messages.events.annotations.AnnotationMovedFromOtherParent;
 import io.lionweb.client.delta.messages.events.annotations.AnnotationMovedInSameParent;
+import io.lionweb.client.delta.messages.events.annotations.AnnotationReplaced;
 import io.lionweb.client.delta.messages.events.children.*;
 import io.lionweb.client.delta.messages.events.partitions.PartitionAdded;
 import io.lionweb.client.delta.messages.events.partitions.PartitionDeleted;
@@ -57,9 +59,11 @@ import io.lionweb.serialization.data.MetaPointer;
 import io.lionweb.serialization.data.SerializationChunk;
 import io.lionweb.serialization.data.SerializedClassifierInstance;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -174,6 +178,8 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
       else if (event instanceof ClassifierChanged) onClassifierChanged((ClassifierChanged) event);
       else if (event instanceof AnnotationAdded) onAnnotationAdded((AnnotationAdded) event);
       else if (event instanceof AnnotationDeleted) onAnnotationDeleted((AnnotationDeleted) event);
+      else if (event instanceof AnnotationReplaced)
+        onAnnotationReplaced((AnnotationReplaced) event);
       else if (event instanceof AnnotationMovedInSameParent
           || event instanceof AnnotationMovedFromOtherParent) {
         throw new UnsupportedOperationException();
@@ -597,6 +603,30 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
   }
 
   /**
+   * Sends a command to replace an existing annotation of a node with a new one at the same index.
+   * The replaced annotation and all its descendants are deleted.
+   *
+   * @param parentId node id of the annotated node
+   * @param index 0-based position of the annotation to replace
+   * @param replacedAnnotationId id of the annotation instance being replaced
+   * @param newAnnotation the new annotation instance (and its descendants) to insert
+   */
+  public void sendReplaceAnnotationCommand(
+      @NotNull String parentId,
+      int index,
+      @NotNull String replacedAnnotationId,
+      @NotNull AnnotationInstance newAnnotation) {
+    Objects.requireNonNull(parentId, "parentId must not be null");
+    Objects.requireNonNull(replacedAnnotationId, "replacedAnnotationId must not be null");
+    Objects.requireNonNull(newAnnotation, "newAnnotation must not be null");
+    SerializationChunk chunk = serialization.serializeTreeToSerializationChunk(newAnnotation);
+    channel.sendCommand(
+        ensureParticipation(),
+        commandId ->
+            new ReplaceAnnotation(commandId, chunk, parentId, index, replacedAnnotationId));
+  }
+
+  /**
    * Sends a command to move an annotation within the same parent's annotation list.
    *
    * @param parentId node id of the annotated node
@@ -924,6 +954,60 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
               .findFirst()
               .ifPresent(instance::removeAnnotation);
         });
+  }
+
+  /**
+   * Replaces the annotation at {@code event.index} of every local copy of {@code event.parent} with
+   * the annotation carried by the event, preserving the position of the other annotations.
+   *
+   * <p>{@link ClassifierInstance} only supports appending annotations, so the annotations following
+   * the replaced one are temporarily detached and re-attached after the new annotation. The
+   * observer is paused while events are processed, so this does not produce any command.
+   */
+  private void onAnnotationReplaced(@NotNull AnnotationReplaced event) {
+    Objects.requireNonNull(event, "event must not be null");
+    forEachNode(
+        event.parent,
+        instance -> {
+          List<AnnotationInstance> annotations = new ArrayList<>(instance.getAnnotations());
+          if (event.index >= annotations.size()
+              || !event.replacedAnnotation.equals(annotations.get(event.index).getID())) {
+            throw new IllegalStateException(
+                "Annotation "
+                    + event.replacedAnnotation
+                    + " not found at index "
+                    + event.index
+                    + " of "
+                    + instance);
+          }
+          AnnotationInstance newAnnotation =
+              (AnnotationInstance)
+                  serialization
+                      .deserializeSerializationChunk(
+                          withSerializationFormatVersion(event.newAnnotation))
+                      .get(0);
+          List<AnnotationInstance> tail =
+              new ArrayList<>(annotations.subList(event.index, annotations.size()));
+          for (AnnotationInstance annotation : tail) {
+            instance.removeAnnotation(annotation);
+          }
+          instance.addAnnotation(newAnnotation);
+          for (AnnotationInstance annotation : tail.subList(1, tail.size())) {
+            instance.addAnnotation(annotation);
+          }
+          monitorTree(newAnnotation);
+        });
+  }
+
+  /** Tracks {@code root} and all its descendants, including annotations. */
+  private void monitorTree(@NotNull ClassifierInstance<?> root) {
+    List<ClassifierInstance<?>> instances = new ArrayList<>();
+    ClassifierInstance.collectSelfAndDescendants(root, true, instances);
+    for (ClassifierInstance<?> instance : instances) {
+      nodes
+          .computeIfAbsent(instance.getID(), id -> new HashSet<>())
+          .add(new WeakReference<>(instance));
+    }
   }
 
   private void onClassifierChanged(@NotNull ClassifierChanged event) {
