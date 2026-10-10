@@ -31,6 +31,26 @@ public interface DeltaChannel {
 
   void sendEvent(@NotNull Function<Integer, DeltaEvent> eventProducer);
 
+  /**
+   * Whether this channel supports delivering events to specific participations, through {@link
+   * #sendEvent(String, Function)}. Channels not supporting it receive all the events through {@link
+   * #sendEvent(Function)}, and are responsible for routing them to the interested participations.
+   */
+  default boolean supportsTargetedEvents() {
+    return false;
+  }
+
+  /**
+   * Events sent by the repository to a specific participation, for example because it is subscribed
+   * to the partition affected by the event. The event producer is invoked once for each delivery
+   * and receives the sequence number assigned to it. Only used if {@link #supportsTargetedEvents()}
+   * returns true.
+   */
+  default void sendEvent(
+      @NotNull String participationId, @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    throw new UnsupportedOperationException("This channel does not support targeted events");
+  }
+
   void registerEventReceiver(@NotNull DeltaEventReceiver deltaEventReceiver);
 
   void unregisterEventReceiver(@NotNull DeltaEventReceiver deltaEventReceiver);

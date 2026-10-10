@@ -39,7 +39,7 @@ public class DeltaNodeMutationsTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -74,7 +74,7 @@ public class DeltaNodeMutationsTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -109,7 +109,7 @@ public class DeltaNodeMutationsTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -166,7 +166,7 @@ public class DeltaNodeMutationsTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -210,7 +210,7 @@ public class DeltaNodeMutationsTest extends AbstractDeltaProtocolTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     // Use the MetaPointer of an arbitrary target classifier

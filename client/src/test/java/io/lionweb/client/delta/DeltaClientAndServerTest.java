@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.lionweb.LionWebVersion;
 import io.lionweb.client.api.HistorySupport;
 import io.lionweb.client.api.RepositoryConfiguration;
+import io.lionweb.client.delta.messages.DeltaEvent;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.events.children.ChildDeleted;
 import io.lionweb.client.inmemory.InMemoryServer;
@@ -17,10 +18,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class DeltaClientAndServerTest {
+public class DeltaClientAndServerTest extends AbstractDeltaProtocolTest {
 
   @Test
   public void simpleSynchronizationOfNodesInstances() {
@@ -45,7 +48,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
     client1.monitorPartition(language1);
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(language2);
 
@@ -116,7 +119,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
@@ -158,7 +161,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
@@ -209,17 +212,26 @@ public class DeltaClientAndServerTest {
 
     DeltaChannel channel = new InMemoryDeltaChannel();
     server.monitorDeltaChannel("MyRepo", channel);
-    List<ChildDeleted> childDeletedEvents = new ArrayList<>();
-    channel.registerEventReceiver(
-        event -> {
-          if (event instanceof ChildDeleted) {
-            childDeletedEvents.add((ChildDeleted) event);
-          }
-        });
-
     DeltaClient client = new DeltaClient(channel, "my-client-1");
     client.sendSignOnRequest();
     client.monitorPartition(language1);
+
+    // Events are delivered only to the receivers bound to the subscribed participation
+    List<ChildDeleted> childDeletedEvents = new ArrayList<>();
+    channel.registerEventReceiver(
+        new DeltaEventReceiver() {
+          @Override
+          public void receiveEvent(@NotNull DeltaEvent event) {
+            if (event instanceof ChildDeleted) {
+              childDeletedEvents.add((ChildDeleted) event);
+            }
+          }
+
+          @Override
+          public @Nullable String getParticipationId() {
+            return client.getParticipationId();
+          }
+        });
 
     Concept concept1 = new Concept(language1, "Concept A", "concept-a", "a");
     Property property1 = Property.createRequired("prop", LionCoreBuiltins.getString(), "prop-a");
@@ -277,7 +289,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
