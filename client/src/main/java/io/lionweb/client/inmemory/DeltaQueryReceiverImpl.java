@@ -80,7 +80,10 @@ class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
       UnsubscribeFromPartitionContentsRequest req = (UnsubscribeFromPartitionContentsRequest) query;
       return new UnsubscribeFromPartitionContentsResponse(req.queryId);
     }
-    throw new UnsupportedOperationException("Not supported yet.");
+    ErrorResponse error = new ErrorResponse(query.queryId);
+    error.errorCode = StandardErrorCode.MESSAGE_KIND_UNKNOWN.code;
+    error.message = "Unsupported query type: " + query.getClass().getName();
+    return error;
   }
 
   private @NotNull SerializationChunk buildPartitionRootsChunk(

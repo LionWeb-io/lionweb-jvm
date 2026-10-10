@@ -108,9 +108,13 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
       else if (command instanceof AddPartition) handleAddPartition((AddPartition) command, source);
       else if (command instanceof DeletePartition)
         handleDeletePartition((DeletePartition) command, data, source);
-      else
-        throw new UnsupportedOperationException(
-            "Unsupported command type: " + command.getClass().getName());
+      else {
+        String msg = "Unsupported command type: " + command.getClass().getName();
+        channel.sendEvent(
+            seqNum ->
+                new ErrorEvent(seqNum, StandardErrorCode.MESSAGE_KIND_UNKNOWN, msg)
+                    .addSource(source));
+      }
     } catch (NodeNotFoundException e) {
       String msg = e.getMessage();
       channel.sendEvent(seqNum -> new ErrorEvent(seqNum, StandardErrorCode.UNKNOWN_NODE, msg));
