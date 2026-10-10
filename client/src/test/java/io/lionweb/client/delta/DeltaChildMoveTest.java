@@ -4,11 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.lionweb.client.inmemory.InMemoryServer;
 import io.lionweb.language.Concept;
+import io.lionweb.language.Containment;
 import io.lionweb.language.Language;
+import io.lionweb.model.ClassifierInstance;
+import io.lionweb.model.Node;
+import io.lionweb.model.impl.DynamicNode;
 import io.lionweb.serialization.JsonSerialization;
 import io.lionweb.serialization.data.MetaPointer;
+import io.lionweb.serialization.data.SerializedClassifierInstance;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -256,5 +262,78 @@ public class DeltaChildMoveTest extends AbstractDeltaProtocolTest {
 
     var serverNodesB = server.retrieve("MyRepo", java.util.List.of("lang-b"), Integer.MAX_VALUE);
     assertTrue(serverNodesB.stream().anyMatch(n -> "cx".equals(n.getID())));
+  }
+
+  /**
+   * A client can move a child between two different containments of the same parent using the
+   * explicit {@link DeltaClient#sendMoveChildFromOtherContainmentInSameParentCommand} API. The
+   * server's stored state and the other client's local model both reflect the move.
+   */
+  @Test
+  public void moveChildFromOtherContainmentInSameParent() {
+    InMemoryServer server = createServerWithRepository();
+    JsonSerialization ser = serialization();
+
+    // A language with a Box concept having two containments ("left" and "right") of Items
+    Language boxLang = new Language("BoxLang", "box-lang", "box-lang-key", "1");
+    Concept itemConcept = new Concept(boxLang, "Item", "item-id", "item-key");
+    boxLang.addElement(itemConcept);
+    Concept boxConcept = new Concept(boxLang, "Box", "box-id", "box-key");
+    boxConcept.setPartition(true);
+    boxLang.addElement(boxConcept);
+    Containment left = Containment.createMultiple("left", itemConcept, "box-left-id");
+    left.setKey("box-left-key");
+    boxConcept.addFeature(left);
+    Containment right = Containment.createMultiple("right", itemConcept, "box-right-id");
+    right.setKey("box-right-key");
+    boxConcept.addFeature(right);
+    ser.registerLanguage(boxLang);
+    ser.enableDynamicNodes();
+
+    // Box: left = [i1, i2], right = [i3]
+    DynamicNode box1 = new DynamicNode("box", boxConcept);
+    box1.addChild(left, new DynamicNode("i1", itemConcept));
+    box1.addChild(left, new DynamicNode("i2", itemConcept));
+    box1.addChild(right, new DynamicNode("i3", itemConcept));
+    // Store the whole tree (createPartition only stores the partition node itself)
+    server.createPartitionFromChunk(
+        "MyRepo", ser.serializeTreeToSerializationChunk(box1).getClassifierInstances());
+
+    ClassifierInstance<?> box2 = server.retrieveAsClassifierInstance("MyRepo", "box", ser);
+    Assertions.assertNotNull(box2);
+    assertEquals(List.of("i1", "i2"), childIds(box2, left));
+    assertEquals(List.of("i3"), childIds(box2, right));
+
+    DeltaChannel channel = prepareChannel(server);
+
+    DeltaClient client1 = new DeltaClient(channel, "my-client-1");
+    client1.registerLanguage(boxLang);
+    client1.sendSignOnRequest();
+    client1.monitorPartition(box1);
+
+    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    client2.registerLanguage(boxLang);
+    client2.sendSignOnRequest();
+    client2.monitorPartition((Node) box2);
+
+    MetaPointer leftMp = MetaPointer.from(left);
+    MetaPointer rightMp = MetaPointer.from(right);
+
+    // Move i1 (left[0]) to right[1]: expected left = [i2], right = [i3, i1]
+    client1.sendMoveChildFromOtherContainmentInSameParentCommand(
+        "box", leftMp, 0, rightMp, 1, "i1");
+
+    // The server's stored state reflects the move
+    SerializedClassifierInstance storedBox = server.retrieve("MyRepo", List.of("box"), 0).get(0);
+    assertEquals(List.of("i2"), storedBox.getContainmentValues(leftMp));
+    assertEquals(List.of("i3", "i1"), storedBox.getContainmentValues(rightMp));
+
+    // client2 (the receiver) reflects the move
+    assertEquals(List.of("i2"), childIds(box2, left));
+    assertEquals(List.of("i3", "i1"), childIds(box2, right));
+  }
+
+  private static List<String> childIds(ClassifierInstance<?> instance, Containment containment) {
+    return instance.getChildren(containment).stream().map(Node::getID).collect(Collectors.toList());
   }
 }
