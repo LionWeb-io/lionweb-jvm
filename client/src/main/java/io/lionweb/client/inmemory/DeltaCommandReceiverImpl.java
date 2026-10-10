@@ -160,11 +160,16 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   }
 
   private void handleDeleteChild(DeleteChild cmd, RepositoryData data, CommandSource source) {
-    requireNode(data, cmd.parent);
+    SerializedClassifierInstance parent = requireNode(data, cmd.parent);
+    requireNode(data, cmd.deletedChild);
+    List<String> descendants = new ArrayList<>();
+    collectDescendants(data, cmd.deletedChild, descendants);
+    parent.removeChild(cmd.deletedChild);
+    data.deleteNodeAndDescendant(cmd.deletedChild);
     channel.sendEvent(
         seqNum ->
             new ChildDeleted(
-                    seqNum, cmd.parent, cmd.deletedChild, List.of(), cmd.index, cmd.containment)
+                    seqNum, cmd.parent, cmd.deletedChild, descendants, cmd.index, cmd.containment)
                 .addSource(source));
   }
 
