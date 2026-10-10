@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.lionweb.client.delta.messages.DeltaEvent;
 import io.lionweb.client.delta.messages.DeltaQueryResponse;
 import io.lionweb.client.delta.messages.commands.CompositeCommand;
+import io.lionweb.client.delta.messages.events.CustomErrorCode;
 import io.lionweb.client.delta.messages.events.ErrorEvent;
-import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.queries.ErrorResponse;
 import io.lionweb.client.delta.messages.queries.GetAvailableIdsRequest;
 import io.lionweb.client.delta.messages.queries.ListPartitionsRequest;
@@ -35,14 +35,14 @@ public class DeltaUnsupportedMessagesTest extends AbstractDeltaProtocolTest {
         channel.sendQuery(queryId -> new GetAvailableIdsRequest(queryId, 3));
     assertInstanceOf(ErrorResponse.class, response);
     ErrorResponse error = (ErrorResponse) response;
-    assertEquals(StandardErrorCode.MESSAGE_KIND_UNKNOWN.code, error.errorCode);
+    assertEquals(CustomErrorCode.NOT_IMPLEMENTED, error.errorCode);
     assertNotNull(error.message);
     assertTrue(error.message.contains(GetAvailableIdsRequest.class.getName()));
 
     response =
         channel.sendQuery(queryId -> new SubscribeToChangingPartitionsRequest(queryId, true, true));
     assertInstanceOf(ErrorResponse.class, response);
-    assertEquals(StandardErrorCode.MESSAGE_KIND_UNKNOWN.code, ((ErrorResponse) response).errorCode);
+    assertEquals(CustomErrorCode.NOT_IMPLEMENTED, ((ErrorResponse) response).errorCode);
 
     // The server keeps working after the unsupported queries
     assertInstanceOf(ListPartitionsResponse.class, channel.sendQuery(ListPartitionsRequest::new));
@@ -67,7 +67,7 @@ public class DeltaUnsupportedMessagesTest extends AbstractDeltaProtocolTest {
     assertEquals(1, events.size());
     assertInstanceOf(ErrorEvent.class, events.get(0));
     ErrorEvent errorEvent = (ErrorEvent) events.get(0);
-    assertEquals(StandardErrorCode.MESSAGE_KIND_UNKNOWN.code, errorEvent.errorCode);
+    assertEquals(CustomErrorCode.NOT_IMPLEMENTED, errorEvent.errorCode);
     assertNotNull(errorEvent.message);
     assertTrue(errorEvent.message.contains(CompositeCommand.class.getName()));
 
