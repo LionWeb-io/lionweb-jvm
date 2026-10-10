@@ -175,7 +175,7 @@ public class DeltaPartitionManagementTest extends AbstractDeltaProtocolTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     // client2 subscribes to partition-list changes so it expects to hear about new partitions

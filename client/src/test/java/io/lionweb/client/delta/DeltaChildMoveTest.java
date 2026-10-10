@@ -42,7 +42,7 @@ public class DeltaChildMoveTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -105,7 +105,7 @@ public class DeltaChildMoveTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 
@@ -166,7 +166,7 @@ public class DeltaChildMoveTest extends AbstractDeltaProtocolTest {
     client1.sendSignOnRequest();
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(lang2);
 

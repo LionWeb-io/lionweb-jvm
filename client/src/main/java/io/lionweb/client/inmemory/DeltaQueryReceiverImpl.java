@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
 
@@ -57,7 +58,9 @@ class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
         return error;
       }
       currentParticipationId = reconnectRequest.participationId;
-      return new ReconnectResponse(reconnectRequest.queryId, 0);
+      return new ReconnectResponse(
+          reconnectRequest.queryId,
+          participationManager.getLastSentSequenceNumber(currentParticipationId));
     } else if (query instanceof ListPartitionsRequest) {
       ListPartitionsRequest req = (ListPartitionsRequest) query;
       RepositoryData repositoryData = inMemoryServer.getRepository(repositoryName);
@@ -65,22 +68,53 @@ class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
       return new ListPartitionsResponse(req.queryId, chunk);
     } else if (query instanceof ListAndSubscribePartitionsRequest) {
       ListAndSubscribePartitionsRequest req = (ListAndSubscribePartitionsRequest) query;
+      ErrorResponse error = checkParticipation(req.queryId);
+      if (error != null) return error;
+      participationManager.subscribeToPartitionList(currentParticipationId);
       RepositoryData repositoryData = inMemoryServer.getRepository(repositoryName);
       SerializationChunk chunk = buildPartitionRootsChunk(repositoryData);
+      // The in-memory server never splits the response, so split is always false
       return new ListAndSubscribePartitionsResponse(req.queryId, chunk, false);
     } else if (query instanceof SubscribeToPartitionContentsRequest) {
       SubscribeToPartitionContentsRequest req = (SubscribeToPartitionContentsRequest) query;
+      ErrorResponse error = checkParticipation(req.queryId);
+      if (error != null) return error;
       RepositoryData repositoryData = inMemoryServer.getRepository(repositoryName);
+      if (!repositoryData.partitionIDs.contains(req.partition)) {
+        error = new ErrorResponse(req.queryId);
+        error.errorCode = StandardErrorCode.UNKNOWN_NODE.code;
+        error.message = "Unknown partition: " + req.partition;
+        return error;
+      }
       List<SerializedClassifierInstance> nodes = new ArrayList<>();
       repositoryData.retrieve(req.partition, Integer.MAX_VALUE, nodes);
+      participationManager.subscribeToPartition(currentParticipationId, req.partition);
       LionWebVersion version = repositoryData.configuration.getLionWebVersion();
       SerializationChunk chunk = SerializationChunk.fromNodes(version, nodes);
       return new SubscribeToPartitionContentsResponse(req.queryId, chunk);
     } else if (query instanceof UnsubscribeFromPartitionContentsRequest) {
       UnsubscribeFromPartitionContentsRequest req = (UnsubscribeFromPartitionContentsRequest) query;
+      ErrorResponse error = checkParticipation(req.queryId);
+      if (error != null) return error;
+      participationManager.unsubscribeFromPartition(currentParticipationId, req.partition);
       return new UnsubscribeFromPartitionContentsResponse(req.queryId);
     }
     throw new UnsupportedOperationException("Not supported yet.");
+  }
+
+  /**
+   * Returns an error response if this channel session is not bound to an active participation, null
+   * otherwise.
+   */
+  private @Nullable ErrorResponse checkParticipation(@NotNull String queryId) {
+    if (currentParticipationId != null
+        && participationManager.isActiveParticipation(currentParticipationId)) {
+      return null;
+    }
+    ErrorResponse error = new ErrorResponse(queryId);
+    error.errorCode = StandardErrorCode.INVALID_PARTICIPATION.code;
+    error.message = "No active participation: sign on or reconnect first";
+    return error;
   }
 
   private @NotNull SerializationChunk buildPartitionRootsChunk(

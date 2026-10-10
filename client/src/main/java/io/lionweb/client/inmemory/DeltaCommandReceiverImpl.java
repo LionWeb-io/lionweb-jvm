@@ -4,6 +4,7 @@ import io.lionweb.client.delta.CommandSource;
 import io.lionweb.client.delta.DeltaChannel;
 import io.lionweb.client.delta.DeltaCommandReceiver;
 import io.lionweb.client.delta.messages.DeltaCommand;
+import io.lionweb.client.delta.messages.DeltaEvent;
 import io.lionweb.client.delta.messages.commands.ChangeClassifier;
 import io.lionweb.client.delta.messages.commands.annotations.*;
 import io.lionweb.client.delta.messages.commands.children.*;
@@ -31,6 +32,7 @@ import io.lionweb.client.delta.messages.events.references.ReferenceDeleted;
 import io.lionweb.serialization.data.SerializedClassifierInstance;
 import io.lionweb.serialization.data.SerializedReferenceValue;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
 
@@ -58,7 +60,10 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   @Override
   public void receiveCommand(@NotNull String participationId, @NotNull DeltaCommand command) {
     if (!participationManager.isActiveParticipation(participationId)) {
-      channel.sendEvent(
+      // Error events are sent only to the participation which issued the command
+      inMemoryServer.sendEvent(
+          channel,
+          List.of(participationId),
           sequenceNumber ->
               new ErrorEvent(
                   sequenceNumber,
@@ -113,7 +118,10 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
             "Unsupported command type: " + command.getClass().getName());
     } catch (NodeNotFoundException e) {
       String msg = e.getMessage();
-      channel.sendEvent(seqNum -> new ErrorEvent(seqNum, StandardErrorCode.UNKNOWN_NODE, msg));
+      inMemoryServer.sendEvent(
+          channel,
+          List.of(participationId),
+          seqNum -> new ErrorEvent(seqNum, StandardErrorCode.UNKNOWN_NODE, msg));
     }
   }
 
@@ -122,7 +130,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     String oldValue = node.getPropertyValue(cmd.property);
     node.setPropertyValue(cmd.property, cmd.newValue);
     String newValue = node.getPropertyValue(cmd.property);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.node),
         seqNum ->
             new PropertyChanged(seqNum, node.getID(), cmd.property, newValue, oldValue)
                 .addSource(source));
@@ -138,7 +147,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
             .orElseThrow()
             .getID();
     parent.addChild(cmd.containment, childId, cmd.index);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ChildAdded(seqNum, cmd.parent, cmd.newChild, cmd.containment, cmd.index)
                 .addSource(source));
@@ -146,7 +156,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
 
   private void handleDeleteChild(DeleteChild cmd, RepositoryData data, CommandSource source) {
     requireNode(data, cmd.parent);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ChildDeleted(
                     seqNum, cmd.parent, cmd.deletedChild, List.of(), cmd.index, cmd.containment)
@@ -159,7 +170,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
         cmd.reference,
         cmd.index,
         new SerializedReferenceValue.Entry(cmd.newReference, cmd.newResolveInfo));
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ReferenceAdded(
                     seqNum,
@@ -188,7 +200,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     List<String> annotations = new ArrayList<>(parent.getAnnotations());
     annotations.add(cmd.index, annotationRoot.getID());
     parent.setAnnotations(annotations);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new AnnotationAdded(seqNum, cmd.parent, cmd.newAnnotation, cmd.index)
                 .addSource(source));
@@ -203,7 +216,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     annotations.remove(cmd.index);
     parent.setAnnotations(annotations);
     data.deleteNodeAndDescendant(cmd.deletedAnnotation);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new AnnotationDeleted(
                     seqNum,
@@ -224,7 +238,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     int newIndex = cmd.oldIndex + cmd.indexOffset;
     annotations.add(newIndex, id);
     parent.setAnnotations(annotations);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new AnnotationMovedInSameParent(
                     seqNum, cmd.indexOffset, cmd.movedAnnotation, cmd.parent, cmd.oldIndex)
@@ -245,7 +260,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     List<String> newAnnotations = new ArrayList<>(newParent.getAnnotations());
     newAnnotations.add(cmd.newIndex, cmd.movedAnnotation);
     newParent.setAnnotations(newAnnotations);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.oldParent, cmd.newParent),
         seqNum ->
             new AnnotationMovedFromOtherParent(
                     seqNum,
@@ -279,7 +295,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     data.store(cmd.newAnnotation.getClassifierInstances());
     annotations.add(cmd.index, newRoot.getID());
     parent.setAnnotations(annotations);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new AnnotationReplaced(
                     seqNum,
@@ -299,7 +316,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     parent.removeChild(cmd.movedChild);
     int newIndex = cmd.oldIndex + cmd.indexOffset;
     parent.addChild(cmd.containment, cmd.movedChild, newIndex);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ChildMovedInSameContainment(
                     seqNum,
@@ -318,7 +336,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     SerializedClassifierInstance parent = requireNode(data, cmd.parent);
     parent.removeChild(cmd.movedChild);
     parent.addChild(cmd.newContainment, cmd.movedChild, cmd.newIndex);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum -> {
           ChildMovedFromOtherContainmentInSameParent event =
               new ChildMovedFromOtherContainmentInSameParent(
@@ -340,7 +359,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     oldParent.removeChild(cmd.movedChild);
     child.setParentNodeID(cmd.newParent);
     newParent.addChild(cmd.newContainment, cmd.movedChild, cmd.newIndex);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.oldParent, cmd.newParent),
         seqNum -> {
           ChildMovedFromOtherContainment event =
               new ChildMovedFromOtherContainment(
@@ -372,7 +392,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     newChildRoot.setParentNodeID(cmd.parent);
     data.store(cmd.newChild.getClassifierInstances());
     parent.addChild(cmd.containment, newChildRoot.getID(), cmd.index);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ChildReplaced(
                     seqNum,
@@ -389,7 +410,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
       @NotNull AddProperty cmd, @NotNull RepositoryData data, @NotNull CommandSource source) {
     SerializedClassifierInstance node = requireNode(data, cmd.node);
     node.setPropertyValue(cmd.property, cmd.newValue);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.node),
         seqNum ->
             new PropertyAdded(seqNum, cmd.node, cmd.property, cmd.newValue).addSource(source));
   }
@@ -399,7 +421,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     SerializedClassifierInstance node = requireNode(data, cmd.node);
     String oldValue = node.getPropertyValue(cmd.property);
     node.setPropertyValue(cmd.property, null);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.node),
         seqNum -> new PropertyDeleted(seqNum, cmd.node, cmd.property, oldValue).addSource(source));
   }
 
@@ -411,7 +434,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     entries.set(
         cmd.index, new SerializedReferenceValue.Entry(cmd.newReference, cmd.newResolveInfo));
     node.setReferenceValue(cmd.reference, entries);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ReferenceChanged(
                     seqNum,
@@ -432,7 +456,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
         new ArrayList<>(node.getReferenceValues(cmd.reference));
     entries.remove(cmd.index);
     node.setReferenceValue(cmd.reference, entries);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.parent),
         seqNum ->
             new ReferenceDeleted(
                     seqNum,
@@ -449,7 +474,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     SerializedClassifierInstance node = requireNode(data, cmd.node);
     io.lionweb.serialization.data.MetaPointer oldClassifier = node.getClassifier();
     node.setClassifier(cmd.newClassifier);
-    channel.sendEvent(
+    sendEventToSubscribers(
+        partitionsOf(data, cmd.node),
         seqNum ->
             new ClassifierChanged(seqNum, cmd.node, cmd.newClassifier, oldClassifier)
                 .addSource(source));
@@ -458,7 +484,16 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   private void handleAddPartition(@NotNull AddPartition cmd, @NotNull CommandSource source) {
     inMemoryServer.createPartitionFromChunk(
         repositoryName, cmd.newPartition.getClassifierInstances());
-    channel.sendEvent(seqNum -> new PartitionAdded(seqNum, cmd.newPartition).addSource(source));
+    // The participation creating a partition is automatically subscribed to it
+    List<String> newPartitionIds =
+        cmd.newPartition.getClassifierInstances().stream()
+            .filter(n -> n.getParentNodeID() == null)
+            .map(SerializedClassifierInstance::getID)
+            .collect(Collectors.toList());
+    newPartitionIds.forEach(
+        id -> participationManager.subscribeToPartition(source.participationId, id));
+    sendPartitionEvent(
+        newPartitionIds, seqNum -> new PartitionAdded(seqNum, cmd.newPartition).addSource(source));
   }
 
   private void handleDeletePartition(
@@ -466,9 +501,54 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
     List<String> descendants = new ArrayList<>();
     collectDescendants(data, cmd.deletedPartition, descendants);
     inMemoryServer.deletePartitions(repositoryName, List.of(cmd.deletedPartition));
-    channel.sendEvent(
+    sendPartitionEvent(
+        List.of(cmd.deletedPartition),
         seqNum ->
             new PartitionDeleted(seqNum, cmd.deletedPartition, descendants).addSource(source));
+    participationManager.removeAllSubscriptionsTo(cmd.deletedPartition);
+  }
+
+  /**
+   * Sends the event to the participations subscribed to the contents of any of the given
+   * partitions.
+   */
+  private void sendEventToSubscribers(
+      @NotNull Collection<String> partitionIds,
+      @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    inMemoryServer.sendEvent(
+        repositoryName,
+        participationManager.participationsSubscribedToAnyOf(partitionIds),
+        eventProducer);
+  }
+
+  /**
+   * Sends an event concerning the list of partitions: it is received by the participations
+   * subscribed to the list of partitions and by the participations subscribed to the contents of
+   * the given partitions.
+   */
+  private void sendPartitionEvent(
+      @NotNull Collection<String> partitionIds,
+      @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    Set<String> recipients =
+        new LinkedHashSet<>(participationManager.participationsSubscribedToPartitionList());
+    recipients.addAll(participationManager.participationsSubscribedToAnyOf(partitionIds));
+    inMemoryServer.sendEvent(repositoryName, recipients, eventProducer);
+  }
+
+  /** Returns the IDs of the partitions containing the given nodes. */
+  private @NotNull Set<String> partitionsOf(
+      @NotNull RepositoryData data, @NotNull String... nodeIds) {
+    Set<String> partitionIds = new LinkedHashSet<>();
+    for (String nodeId : nodeIds) {
+      SerializedClassifierInstance node = data.nodesByID.get(nodeId);
+      while (node != null && node.getParentNodeID() != null) {
+        node = data.nodesByID.get(node.getParentNodeID());
+      }
+      if (node != null) {
+        partitionIds.add(node.getID());
+      }
+    }
+    return partitionIds;
   }
 
   /** Returns the node or throws {@link NodeNotFoundException} if it does not exist. */

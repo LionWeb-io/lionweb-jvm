@@ -16,7 +16,7 @@ import java.util.Collections;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class DeltaClientAndServerTest {
+public class DeltaClientAndServerTest extends AbstractDeltaProtocolTest {
 
   @Test
   public void simpleSynchronizationOfNodesInstances() {
@@ -41,7 +41,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
     client1.monitorPartition(language1);
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
     client2.monitorPartition(language2);
 
@@ -112,7 +112,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
@@ -154,7 +154,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
@@ -209,7 +209,7 @@ public class DeltaClientAndServerTest {
     DeltaClient client1 = new DeltaClient(channel, "my-client-1");
     client1.sendSignOnRequest();
 
-    DeltaClient client2 = new DeltaClient(channel, "my-client-2");
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-2");
     client2.sendSignOnRequest();
 
     client1.monitorPartition(language1);
