@@ -18,7 +18,9 @@ import org.junit.jupiter.api.Test;
  * Tests for Delta protocol implementation: annotation operations.
  *
  * <p>Covers: AddAnnotation / AnnotationAdded, DeleteAnnotation / AnnotationDeleted,
- * ReplaceAnnotation / AnnotationReplaced, and MoveAnnotationInSameParent.
+ * ReplaceAnnotation / AnnotationReplaced, MoveAnnotationInSameParent, and
+ * MoveAnnotationFromOtherParent, both when the commands are produced by partition monitoring and
+ * when they are sent through the explicit {@code send*Command} API of {@link DeltaClient}.
  */
 public class DeltaAnnotationsTest extends AbstractDeltaProtocolTest {
 
@@ -252,6 +254,175 @@ public class DeltaAnnotationsTest extends AbstractDeltaProtocolTest {
     client3.sendAddAnnotationCommand(
         "ann-2", new DynamicAnnotationInstance("ann-on-ann", COMMENT_ANN), 0);
     assertEquals(List.of("ann-on-ann"), annotationIds(lang2.getAnnotations().get(0)));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Explicit send*Command API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * A client can add an annotation using the explicit {@link DeltaClient#sendAddAnnotationCommand}
+   * API. The server stores the annotation and broadcasts AnnotationAdded to the other client, which
+   * attaches the annotation to its local copy of the node.
+   */
+  @Test
+  public void sendAddAnnotationCommand() {
+    InMemoryServer server = createServerWithRepository();
+    JsonSerialization ser = serialization();
+
+    Language lang1 = new Language("LangA", "lang-a", "lang-a-key");
+    server.createPartition("MyRepo", lang1, ser);
+
+    Language lang2 = (Language) server.retrieveAsClassifierInstance("MyRepo", "lang-a", ser);
+    Assertions.assertNotNull(lang2);
+
+    DeltaChannel channel = prepareChannel(server);
+
+    DeltaClient client1 = signedOnClient(channel, "my-client-1");
+    client1.monitorPartition(lang1);
+
+    DeltaClient client2 = signedOnClient(channel, "my-client-2");
+    client2.monitorPartition(lang2);
+
+    // The annotation is not attached to any local node: only the command is sent
+    DynamicAnnotationInstance ann = new DynamicAnnotationInstance("ann-1", COMMENT_ANN);
+    client1.sendAddAnnotationCommand("lang-a", ann, 0);
+
+    // Server stores the annotation node, attached to lang-a
+    var serverNodes = server.retrieve("MyRepo", List.of("lang-a"), Integer.MAX_VALUE);
+    var storedAnn =
+        serverNodes.stream().filter(n -> "ann-1".equals(n.getID())).findFirst().orElseThrow();
+    assertEquals("lang-a", storedAnn.getParentNodeID());
+    var langANode =
+        serverNodes.stream().filter(n -> "lang-a".equals(n.getID())).findFirst().orElseThrow();
+    assertEquals(List.of("ann-1"), langANode.getAnnotations());
+
+    // client2 received AnnotationAdded and attached the annotation to its copy
+    assertEquals(1, lang2.getAnnotations().size());
+    assertEquals("ann-1", lang2.getAnnotations().get(0).getID());
+  }
+
+  /**
+   * The index passed to {@link DeltaClient#sendAddAnnotationCommand} determines where the server
+   * inserts the annotation in the parent's annotation list.
+   */
+  @Test
+  public void sendAddAnnotationCommandAtIndex() {
+    InMemoryServer server = createServerWithRepository();
+    JsonSerialization ser = serialization();
+
+    Language lang = new Language("LangA", "lang-a", "lang-a-key");
+    server.createPartition("MyRepo", lang, ser);
+
+    DeltaChannel channel = prepareChannel(server);
+
+    DeltaClient client = signedOnClient(channel, "my-client");
+    client.monitorPartition(lang);
+
+    lang.addAnnotation(new DynamicAnnotationInstance("ann-1", COMMENT_ANN));
+    lang.addAnnotation(new DynamicAnnotationInstance("ann-2", COMMENT_ANN));
+    assertEquals(
+        List.of("ann-1", "ann-2"),
+        server.retrieve("MyRepo", List.of("lang-a"), 0).get(0).getAnnotations());
+
+    // Insert ann-3 between ann-1 and ann-2
+    client.sendAddAnnotationCommand(
+        "lang-a", new DynamicAnnotationInstance("ann-3", COMMENT_ANN), 1);
+
+    assertEquals(
+        List.of("ann-1", "ann-3", "ann-2"),
+        server.retrieve("MyRepo", List.of("lang-a"), 0).get(0).getAnnotations());
+  }
+
+  /**
+   * A client can delete an annotation using the explicit {@link
+   * DeltaClient#sendDeleteAnnotationCommand} API. The server removes it and broadcasts
+   * AnnotationDeleted to the other client, which removes it from its local copy of the node.
+   */
+  @Test
+  public void sendDeleteAnnotationCommand() {
+    InMemoryServer server = createServerWithRepository();
+    JsonSerialization ser = serialization();
+
+    Language lang1 = new Language("LangA", "lang-a", "lang-a-key");
+    server.createPartition("MyRepo", lang1, ser);
+
+    Language lang2 = (Language) server.retrieveAsClassifierInstance("MyRepo", "lang-a", ser);
+    Assertions.assertNotNull(lang2);
+
+    DeltaChannel channel = prepareChannel(server);
+
+    DeltaClient client1 = signedOnClient(channel, "my-client-1");
+    client1.monitorPartition(lang1);
+
+    DeltaClient client2 = signedOnClient(channel, "my-client-2");
+    client2.monitorPartition(lang2);
+
+    // Add two annotations via the model API, so that all parties know about them
+    lang1.addAnnotation(new DynamicAnnotationInstance("ann-1", COMMENT_ANN));
+    lang1.addAnnotation(new DynamicAnnotationInstance("ann-2", COMMENT_ANN));
+    assertEquals(2, lang2.getAnnotations().size());
+
+    // Delete ann-1 (index 0) via the explicit API
+    client1.sendDeleteAnnotationCommand("lang-a", 0, "ann-1");
+
+    // Server no longer stores ann-1
+    var serverNodes = server.retrieve("MyRepo", List.of("lang-a"), Integer.MAX_VALUE);
+    assertFalse(serverNodes.stream().anyMatch(n -> "ann-1".equals(n.getID())));
+    var langANode =
+        serverNodes.stream().filter(n -> "lang-a".equals(n.getID())).findFirst().orElseThrow();
+    assertEquals(List.of("ann-2"), langANode.getAnnotations());
+
+    // client2 received AnnotationDeleted and removed ann-1 from its copy
+    assertEquals(1, lang2.getAnnotations().size());
+    assertEquals("ann-2", lang2.getAnnotations().get(0).getID());
+  }
+
+  /**
+   * A client can move an annotation from one node to another using the explicit {@link
+   * DeltaClient#sendMoveAnnotationFromOtherParentCommand} API. The server updates the annotation
+   * lists of both nodes and the parent of the annotation. Only a single client is used, since
+   * applying AnnotationMovedFromOtherParent on a receiving client is not supported yet.
+   */
+  @Test
+  public void sendMoveAnnotationFromOtherParentCommand() {
+    InMemoryServer server = createServerWithRepository();
+    JsonSerialization ser = serialization();
+
+    Language langA = new Language("LangA", "lang-a", "lang-a-key");
+    Language langB = new Language("LangB", "lang-b", "lang-b-key");
+    server.createPartition("MyRepo", langA, ser);
+    server.createPartition("MyRepo", langB, ser);
+
+    DeltaChannel channel = prepareChannel(server);
+
+    DeltaClient client = signedOnClient(channel, "my-client");
+    client.monitorPartition(langA);
+    client.monitorPartition(langB);
+
+    langA.addAnnotation(new DynamicAnnotationInstance("ann-1", COMMENT_ANN));
+    langB.addAnnotation(new DynamicAnnotationInstance("ann-2", COMMENT_ANN));
+    assertEquals(
+        List.of("ann-1"), server.retrieve("MyRepo", List.of("lang-a"), 0).get(0).getAnnotations());
+    assertEquals(
+        List.of("ann-2"), server.retrieve("MyRepo", List.of("lang-b"), 0).get(0).getAnnotations());
+
+    // Move ann-1 from lang-a (index 0) to lang-b (index 0): expected lang-b = [ann-1, ann-2]
+    client.sendMoveAnnotationFromOtherParentCommand("lang-a", "lang-b", "ann-1", 0, 0);
+
+    assertEquals(
+        List.of(), server.retrieve("MyRepo", List.of("lang-a"), 0).get(0).getAnnotations());
+    assertEquals(
+        List.of("ann-1", "ann-2"),
+        server.retrieve("MyRepo", List.of("lang-b"), 0).get(0).getAnnotations());
+
+    // The annotation node is now stored under lang-b
+    var serverNodesA = server.retrieve("MyRepo", List.of("lang-a"), Integer.MAX_VALUE);
+    assertFalse(serverNodesA.stream().anyMatch(n -> "ann-1".equals(n.getID())));
+    var serverNodesB = server.retrieve("MyRepo", List.of("lang-b"), Integer.MAX_VALUE);
+    var storedAnn =
+        serverNodesB.stream().filter(n -> "ann-1".equals(n.getID())).findFirst().orElseThrow();
+    assertEquals("lang-b", storedAnn.getParentNodeID());
   }
 
   private static List<String> annotationIds(ClassifierInstance<?> instance) {
