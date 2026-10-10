@@ -3,6 +3,7 @@ package io.lionweb.client.inmemory;
 import io.lionweb.LionWebVersion;
 import io.lionweb.client.api.*;
 import io.lionweb.client.delta.DeltaChannel;
+import io.lionweb.client.delta.messages.DeltaEvent;
 import io.lionweb.model.ClassifierInstance;
 import io.lionweb.model.Node;
 import io.lionweb.serialization.AbstractSerialization;
@@ -11,6 +12,8 @@ import io.lionweb.serialization.data.SerializedClassifierInstance;
 import io.lionweb.utils.ValidationResult;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,6 +39,9 @@ public class InMemoryServer {
   private final boolean materializeClassifierIndex;
 
   private final ParticipationManager participationManager = new ParticipationManager();
+
+  /** The delta channels monitored for each repository. */
+  private final Map<String, Set<DeltaChannel>> deltaChannels = new ConcurrentHashMap<>();
 
   public InMemoryServer() {
     this(true);
@@ -79,6 +85,7 @@ public class InMemoryServer {
       throw new IllegalArgumentException();
     }
     repositories.remove(repositoryName);
+    deltaChannels.remove(repositoryName);
   }
 
   public @NotNull List<String> listPartitionIDs(@NotNull String repositoryName) {
@@ -252,6 +259,25 @@ public class InMemoryServer {
    * responsible for processing client-initiated commands, while the query receiver handles queries
    * requesting information from the repository.
    *
+   * <p>The server keeps track, for each participation, of the partitions it is subscribed to
+   * (through {@code SubscribeToPartitionContentsRequest}, {@code
+   * UnsubscribeFromPartitionContentsRequest}, and by creating a partition), and of whether it is
+   * subscribed to changes to the list of partitions (through {@code
+   * ListAndSubscribePartitionsRequest}). Events concerning the contents of a partition are sent
+   * only to the participations subscribed to that partition, while events concerning the creation
+   * or deletion of partitions are also sent to the participations subscribed to the list of
+   * partitions. Error events are sent only to the participation that issued the failing command.
+   * Events are delivered to participations connected through any of the channels monitored for the
+   * same repository. The server also tracks the sequence number of the last event sent to each
+   * participation, and reports it in {@code ReconnectResponse}.
+   *
+   * <p>Subscriptions are attributed to the participation bound to the channel (the last one that
+   * signed on or reconnected through it), so each participation should use its own channel. Events
+   * are delivered to specific participations only through channels supporting it (see {@link
+   * DeltaChannel#supportsTargetedEvents()}), such as {@link
+   * io.lionweb.client.delta.InMemoryDeltaChannel}. Other channels receive each event once and are
+   * responsible for routing it to the interested participations.
+   *
    * @param repositoryName the name of the repository associated with the DeltaChannel
    * @param channel the DeltaChannel to monitor; must not be null
    * @throws NullPointerException if the specified channel is null
@@ -259,6 +285,7 @@ public class InMemoryServer {
   public void monitorDeltaChannel(@NotNull String repositoryName, @NotNull DeltaChannel channel) {
     Objects.requireNonNull(repositoryName, "RepositoryName should not be null");
     Objects.requireNonNull(channel, "Channel should not be null");
+    deltaChannels.computeIfAbsent(repositoryName, k -> new CopyOnWriteArraySet<>()).add(channel);
     channel.registerCommandReceiver(
         new DeltaCommandReceiverImpl(repositoryName, channel, participationManager, this));
     channel.registerQueryReceiver(
@@ -268,6 +295,51 @@ public class InMemoryServer {
   //
   // Package-protected methods
   //
+
+  /**
+   * Sends an event to the given participations, through all the channels monitored for the given
+   * repository, keeping track of the sequence number of the last event sent to each participation.
+   * Channels not supporting targeted events receive the event once, and are responsible for routing
+   * it.
+   */
+  void sendEvent(
+      @NotNull String repositoryName,
+      @NotNull Collection<String> participationIds,
+      @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    Set<DeltaChannel> channels = deltaChannels.getOrDefault(repositoryName, Collections.emptySet());
+    for (DeltaChannel channel : channels) {
+      sendEvent(channel, participationIds, eventProducer);
+    }
+  }
+
+  /**
+   * Sends an event to the given participations, through the given channel, keeping track of the
+   * sequence number of the last event sent to each participation. If the channel does not support
+   * targeted events, the event is sent once and it is up to the channel to route it.
+   */
+  void sendEvent(
+      @NotNull DeltaChannel channel,
+      @NotNull Collection<String> participationIds,
+      @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    if (channel.supportsTargetedEvents()) {
+      for (String participationId : participationIds) {
+        channel.sendEvent(
+            participationId,
+            sequenceNumber -> {
+              participationManager.recordSentEvent(participationId, sequenceNumber);
+              return eventProducer.apply(sequenceNumber);
+            });
+      }
+    } else {
+      channel.sendEvent(
+          sequenceNumber -> {
+            participationIds.forEach(
+                participationId ->
+                    participationManager.recordSentEvent(participationId, sequenceNumber));
+            return eventProducer.apply(sequenceNumber);
+          });
+    }
+  }
 
   @NotNull
   RepositoryData getRepository(@NotNull String repositoryName) {

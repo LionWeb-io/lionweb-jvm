@@ -35,6 +35,7 @@ import io.lionweb.client.delta.messages.events.properties.PropertyDeleted;
 import io.lionweb.client.delta.messages.events.references.ReferenceAdded;
 import io.lionweb.client.delta.messages.events.references.ReferenceChanged;
 import io.lionweb.client.delta.messages.events.references.ReferenceDeleted;
+import io.lionweb.client.delta.messages.queries.ErrorResponse;
 import io.lionweb.client.delta.messages.queries.ListAndSubscribePartitionsRequest;
 import io.lionweb.client.delta.messages.queries.ListAndSubscribePartitionsResponse;
 import io.lionweb.client.delta.messages.queries.ListPartitionsRequest;
@@ -61,6 +62,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -86,6 +88,7 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
   private final @NotNull LionWebVersion lionWebVersion;
   private @Nullable String participationId;
   private @Nullable String pendingReconnectParticipationId;
+  private final @NotNull Set<String> monitoredPartitions = new LinkedHashSet<>();
   private @NotNull ParticipationState state = ParticipationState.NOT_CONNECTED;
 
   public DeltaClient(@NotNull DeltaChannel channel, @NotNull String clientId) {
@@ -116,6 +119,9 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
   /**
    * It is the responsibility of the caller to ensure that the partition is initially in sync with
    * the server.
+   *
+   * <p>The client subscribes to the contents of the partition, so that it receives the events
+   * concerning it. If the client is not yet connected, the subscription is performed upon sign-on.
    */
   public void monitorPartition(@NotNull Node partition) {
     Objects.requireNonNull(partition, "partition should not be null");
@@ -129,6 +135,22 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
                       .add(new WeakReference<>(n)));
       partition.registerPartitionObserver(observer);
     }
+    if (monitoredPartitions.add(partition.getID()) && state == ParticipationState.CONNECTED) {
+      subscribeToMonitoredPartition(partition.getID());
+    }
+  }
+
+  /**
+   * Subscribes to a monitored partition. If the partition is not (yet) known to the repository the
+   * subscription is rejected: this is tolerated, as the partition may be created later through
+   * {@link #sendAddPartitionCommand(Node)}, which subscribes the creating participation to it.
+   */
+  private void subscribeToMonitoredPartition(@NotNull String partitionId) {
+    channel.sendQuery(
+        queryId -> {
+          queriesSent.add(queryId);
+          return new SubscribeToPartitionContentsRequest(queryId, partitionId);
+        });
   }
 
   @Override
@@ -178,6 +200,7 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
    * @return the participation ID if available, or {@code null} if no participation ID has been set
    *     or the client is not currently participating.
    */
+  @Override
   public @Nullable String getParticipationId() {
     return participationId;
   }
@@ -206,7 +229,8 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
     } else if (queryResponse instanceof ListPartitionsResponse
         || queryResponse instanceof ListAndSubscribePartitionsResponse
         || queryResponse instanceof SubscribeToPartitionContentsResponse
-        || queryResponse instanceof UnsubscribeFromPartitionContentsResponse) {
+        || queryResponse instanceof UnsubscribeFromPartitionContentsResponse
+        || queryResponse instanceof ErrorResponse) {
       return; // Callers receive these via the return value of the send methods
     }
     throw new UnsupportedOperationException("Not supported yet.");
@@ -218,6 +242,9 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
           queriesSent.add(queryId);
           return new SignOnRequest(queryId, DeltaProtocolVersion.v2025_1, clientId);
         });
+    if (state == ParticipationState.CONNECTED) {
+      monitoredPartitions.forEach(this::subscribeToMonitoredPartition);
+    }
   }
 
   /** Sends a SignOffRequest to terminate the current participation. */
@@ -239,11 +266,18 @@ public class DeltaClient implements DeltaEventReceiver, DeltaQueryResponseReceiv
       @NotNull String existingParticipationId, long lastReceivedSequenceNumber) {
     Objects.requireNonNull(existingParticipationId, "existingParticipationId must not be null");
     this.pendingReconnectParticipationId = existingParticipationId;
-    channel.sendQuery(
-        queryId -> {
-          queriesSent.add(queryId);
-          return new ReconnectRequest(queryId, existingParticipationId, lastReceivedSequenceNumber);
-        });
+    DeltaQueryResponse response =
+        channel.sendQuery(
+            queryId -> {
+              queriesSent.add(queryId);
+              return new ReconnectRequest(
+                  queryId, existingParticipationId, lastReceivedSequenceNumber);
+            });
+    if (response instanceof ErrorResponse) {
+      this.pendingReconnectParticipationId = null;
+      ErrorResponse error = (ErrorResponse) response;
+      throw new ErrorEventReceivedException(error.errorCode, error.message);
+    }
   }
 
   /** Requests the list of partitions currently held in the repository. */

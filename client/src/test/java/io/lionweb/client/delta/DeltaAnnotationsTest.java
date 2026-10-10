@@ -63,7 +63,7 @@ public class DeltaAnnotationsTest extends AbstractDeltaProtocolTest {
     DeltaClient client1 = signedOnClient(channel, "my-client-1");
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = signedOnClient(channel, "my-client-2");
+    DeltaClient client2 = signedOnClient(prepareChannel(server), "my-client-2");
     client2.monitorPartition(lang2);
 
     assertTrue(lang1.getAnnotations().isEmpty());
@@ -112,7 +112,7 @@ public class DeltaAnnotationsTest extends AbstractDeltaProtocolTest {
     DeltaClient client1 = signedOnClient(channel, "my-client-1");
     client1.monitorPartition(lang1);
 
-    DeltaClient client2 = signedOnClient(channel, "my-client-2");
+    DeltaClient client2 = signedOnClient(prepareChannel(server), "my-client-2");
     client2.monitorPartition(lang2);
 
     // Add annotation first

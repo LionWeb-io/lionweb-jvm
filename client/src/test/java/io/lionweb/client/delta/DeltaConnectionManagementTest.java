@@ -52,8 +52,8 @@ public class DeltaConnectionManagementTest extends AbstractDeltaProtocolTest {
     String participationId = client1.getParticipationId();
     assertNotNull(participationId);
 
-    // Simulate transport failure: create a new DeltaClient that does NOT sign on
-    DeltaClient client2 = new DeltaClient(channel, "my-client-1");
+    // Simulate transport failure: create a new DeltaClient, on a new channel, that does NOT sign on
+    DeltaClient client2 = new DeltaClient(prepareChannel(server), "my-client-1");
     assertNull(client2.getParticipationId());
 
     // Reconnect using the previously issued participationId

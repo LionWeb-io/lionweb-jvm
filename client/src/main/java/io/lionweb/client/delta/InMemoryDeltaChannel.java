@@ -3,6 +3,7 @@ package io.lionweb.client.delta;
 import io.lionweb.client.delta.messages.*;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -66,6 +67,23 @@ public class InMemoryDeltaChannel implements DeltaChannel {
   @Override
   public void sendEvent(@NotNull Function<Integer, DeltaEvent> eventProducer) {
     eventReceivers.forEach(receiver -> receiver.receiveEvent(eventProducer.apply(nextEventId++)));
+  }
+
+  @Override
+  public boolean supportsTargetedEvents() {
+    return true;
+  }
+
+  /** Delivers the event only to the receivers bound to the given participation. */
+  @Override
+  public void sendEvent(
+      @NotNull String participationId, @NotNull Function<Integer, DeltaEvent> eventProducer) {
+    Objects.requireNonNull(participationId, "participationId must not be null");
+    Objects.requireNonNull(eventProducer, "eventProducer must not be null");
+    eventReceivers.stream()
+        .filter(receiver -> participationId.equals(receiver.getParticipationId()))
+        .collect(Collectors.toList())
+        .forEach(receiver -> receiver.receiveEvent(eventProducer.apply(nextEventId++)));
   }
 
   @Override

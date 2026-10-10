@@ -18,6 +18,7 @@ import io.lionweb.client.inmemory.InMemoryServer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -53,13 +54,25 @@ public class DeltaUnsupportedMessagesTest extends AbstractDeltaProtocolTest {
     InMemoryServer server = createServerWithRepository();
     DeltaChannel channel = prepareChannel(server);
 
-    List<DeltaEvent> events = new ArrayList<>();
-    channel.registerEventReceiver(events::add);
-
     DeltaQueryResponse signOn =
         channel.sendQuery(
             queryId -> new SignOnRequest(queryId, DeltaProtocolVersion.v2026_1, "my-client-1"));
     String participationId = ((SignOnResponse) signOn).participationId;
+
+    // Error events are delivered only to the participation which issued the command
+    List<DeltaEvent> events = new ArrayList<>();
+    channel.registerEventReceiver(
+        new DeltaEventReceiver() {
+          @Override
+          public void receiveEvent(@NotNull DeltaEvent event) {
+            events.add(event);
+          }
+
+          @Override
+          public @NotNull String getParticipationId() {
+            return participationId;
+          }
+        });
 
     channel.sendCommand(
         participationId, commandId -> new CompositeCommand(commandId, Collections.emptyList()));
