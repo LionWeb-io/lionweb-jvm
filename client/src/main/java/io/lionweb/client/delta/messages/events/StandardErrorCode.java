@@ -10,6 +10,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public enum StandardErrorCode {
   INVALID_PARTICIPATION("invalidParticipation"),
+  MESSAGE_KIND_UNKNOWN("messageKindUnknown"),
   NODE_ALREADY_EXISTS("nodeAlreadyExists"),
   UNKNOWN_NODE("unknownNode"),
   UNKNOWN_INDEX("unknownIndex"),

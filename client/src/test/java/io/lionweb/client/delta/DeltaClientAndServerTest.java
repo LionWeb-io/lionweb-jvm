@@ -5,14 +5,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.lionweb.LionWebVersion;
 import io.lionweb.client.api.HistorySupport;
 import io.lionweb.client.api.RepositoryConfiguration;
+import io.lionweb.client.delta.messages.DeltaEvent;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
+import io.lionweb.client.delta.messages.events.children.ChildDeleted;
 import io.lionweb.client.inmemory.InMemoryServer;
 import io.lionweb.language.*;
 import io.lionweb.serialization.JsonSerialization;
 import io.lionweb.serialization.SerializationProvider;
+import io.lionweb.serialization.data.SerializedClassifierInstance;
 import io.lionweb.utils.ModelComparator;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -174,16 +181,89 @@ public class DeltaClientAndServerTest extends AbstractDeltaProtocolTest {
 
     assertEquals(Arrays.asList(concept1, concept3), language1.getElements());
     assertEquals(Arrays.asList(concept1, concept3), language2.getElements());
+    assertServerChildren(server, "lang-a", "concept-a", "concept-c");
+    assertNodeNotOnServer(server, "concept-b");
 
     language1.removeChild(concept3);
 
     assertEquals(Arrays.asList(concept1), language1.getElements());
     assertEquals(Arrays.asList(concept1), language2.getElements());
+    assertServerChildren(server, "lang-a", "concept-a");
+    assertNodeNotOnServer(server, "concept-c");
 
     language1.removeChild(concept1);
 
     assertEquals(Arrays.asList(), language1.getElements());
     assertEquals(Arrays.asList(), language2.getElements());
+    assertServerChildren(server, "lang-a");
+    assertNodeNotOnServer(server, "concept-a");
+  }
+
+  @Test
+  public void removingChildWithDescendants() {
+    InMemoryServer server = new InMemoryServer();
+    server.createRepository(
+        new RepositoryConfiguration("MyRepo", LionWebVersion.v2024_1, HistorySupport.DISABLED));
+
+    JsonSerialization serialization =
+        SerializationProvider.getStandardJsonSerialization(LionWebVersion.v2024_1);
+    Language language1 = new Language("Language A", "lang-a", "lang-a-key");
+    server.createPartition("MyRepo", language1, serialization);
+
+    DeltaChannel channel = new InMemoryDeltaChannel();
+    server.monitorDeltaChannel("MyRepo", channel);
+    DeltaClient client = new DeltaClient(channel, "my-client-1");
+    client.sendSignOnRequest();
+    client.monitorPartition(language1);
+
+    // Events are delivered only to the receivers bound to the subscribed participation
+    List<ChildDeleted> childDeletedEvents = new ArrayList<>();
+    channel.registerEventReceiver(
+        new DeltaEventReceiver() {
+          @Override
+          public void receiveEvent(@NotNull DeltaEvent event) {
+            if (event instanceof ChildDeleted) {
+              childDeletedEvents.add((ChildDeleted) event);
+            }
+          }
+
+          @Override
+          public @Nullable String getParticipationId() {
+            return client.getParticipationId();
+          }
+        });
+
+    Concept concept1 = new Concept(language1, "Concept A", "concept-a", "a");
+    Property property1 = Property.createRequired("prop", LionCoreBuiltins.getString(), "prop-a");
+    property1.setKey("prop-key");
+    concept1.addFeature(property1);
+    language1.addElement(concept1);
+    assertServerChildren(server, "lang-a", "concept-a");
+    assertServerChildren(server, "concept-a", "prop-a");
+
+    language1.removeChild(concept1);
+
+    assertEquals(Collections.emptyList(), language1.getElements());
+    assertEquals(1, childDeletedEvents.size());
+    assertEquals("concept-a", childDeletedEvents.get(0).deletedChild);
+    assertEquals(Collections.singletonList("prop-a"), childDeletedEvents.get(0).deletedDescendants);
+    assertServerChildren(server, "lang-a");
+    assertNodeNotOnServer(server, "concept-a");
+    assertNodeNotOnServer(server, "prop-a");
+  }
+
+  private static void assertServerChildren(
+      InMemoryServer server, String parentId, String... expectedChildrenIds) {
+    List<SerializedClassifierInstance> retrieved =
+        server.retrieve("MyRepo", Collections.singletonList(parentId), 0);
+    assertEquals(1, retrieved.size());
+    assertEquals(Arrays.asList(expectedChildrenIds), retrieved.get(0).getChildren());
+  }
+
+  private static void assertNodeNotOnServer(InMemoryServer server, String nodeId) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> server.retrieve("MyRepo", Collections.singletonList(nodeId), 0));
   }
 
   @Test

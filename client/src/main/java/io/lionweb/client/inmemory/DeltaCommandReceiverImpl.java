@@ -17,6 +17,7 @@ import io.lionweb.client.delta.messages.commands.references.AddReference;
 import io.lionweb.client.delta.messages.commands.references.ChangeReference;
 import io.lionweb.client.delta.messages.commands.references.DeleteReference;
 import io.lionweb.client.delta.messages.events.ClassifierChanged;
+import io.lionweb.client.delta.messages.events.CustomErrorCode;
 import io.lionweb.client.delta.messages.events.ErrorEvent;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.events.annotations.*;
@@ -35,6 +36,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Implementation of {@link DeltaCommandReceiver} that receives commands from the server and applies
@@ -60,15 +62,11 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   @Override
   public void receiveCommand(@NotNull String participationId, @NotNull DeltaCommand command) {
     if (!participationManager.isActiveParticipation(participationId)) {
-      // Error events are sent only to the participation which issued the command
-      inMemoryServer.sendEvent(
-          channel,
-          List.of(participationId),
-          sequenceNumber ->
-              new ErrorEvent(
-                  sequenceNumber,
-                  StandardErrorCode.INVALID_PARTICIPATION,
-                  "Invalid participation: " + participationId));
+      sendError(
+          participationId,
+          StandardErrorCode.INVALID_PARTICIPATION.code,
+          "Invalid participation: " + participationId,
+          null);
       return;
     }
     CommandSource source = new CommandSource(participationId, command.commandId);
@@ -113,16 +111,37 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
       else if (command instanceof AddPartition) handleAddPartition((AddPartition) command, source);
       else if (command instanceof DeletePartition)
         handleDeletePartition((DeletePartition) command, data, source);
-      else
-        throw new UnsupportedOperationException(
-            "Unsupported command type: " + command.getClass().getName());
+      else sendNotImplemented(command, source);
     } catch (NodeNotFoundException e) {
-      String msg = e.getMessage();
-      inMemoryServer.sendEvent(
-          channel,
-          List.of(participationId),
-          seqNum -> new ErrorEvent(seqNum, StandardErrorCode.UNKNOWN_NODE, msg));
+      sendError(participationId, StandardErrorCode.UNKNOWN_NODE.code, e.getMessage(), null);
     }
+  }
+
+  /** Sends an error event for a recognized command that this server does not implement. */
+  private void sendNotImplemented(@NotNull DeltaCommand command, @NotNull CommandSource source) {
+    sendError(
+        source.participationId,
+        CustomErrorCode.NOT_IMPLEMENTED,
+        "Unsupported command type: " + command.getClass().getName(),
+        source);
+  }
+
+  /**
+   * Sends an error event, optionally attributing it to the command that caused it. Error events are
+   * sent only to the participation which issued the command.
+   */
+  private void sendError(
+      @NotNull String participationId,
+      @NotNull String errorCode,
+      @Nullable String message,
+      @Nullable CommandSource source) {
+    inMemoryServer.sendEvent(
+        channel,
+        List.of(participationId),
+        seqNum -> {
+          ErrorEvent event = new ErrorEvent(seqNum, errorCode, message);
+          return source == null ? event : event.addSource(source);
+        });
   }
 
   private void handleChangeProperty(ChangeProperty cmd, RepositoryData data, CommandSource source) {
@@ -155,12 +174,18 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
   }
 
   private void handleDeleteChild(DeleteChild cmd, RepositoryData data, CommandSource source) {
-    requireNode(data, cmd.parent);
+    SerializedClassifierInstance parent = requireNode(data, cmd.parent);
+    requireNode(data, cmd.deletedChild);
+    Set<String> partitionIds = partitionsOf(data, cmd.parent);
+    List<String> descendants = new ArrayList<>();
+    collectDescendants(data, cmd.deletedChild, descendants);
+    parent.removeChild(cmd.deletedChild);
+    data.deleteNodeAndDescendant(cmd.deletedChild);
     sendEventToSubscribers(
-        partitionsOf(data, cmd.parent),
+        partitionIds,
         seqNum ->
             new ChildDeleted(
-                    seqNum, cmd.parent, cmd.deletedChild, List.of(), cmd.index, cmd.containment)
+                    seqNum, cmd.parent, cmd.deletedChild, descendants, cmd.index, cmd.containment)
                 .addSource(source));
   }
 
@@ -505,6 +530,8 @@ class DeltaCommandReceiverImpl implements DeltaCommandReceiver {
         List.of(cmd.deletedPartition),
         seqNum ->
             new PartitionDeleted(seqNum, cmd.deletedPartition, descendants).addSource(source));
+    // As per the specification of PartitionDeleted, clients are now unsubscribed from the deleted
+    // partition: if a partition with the same ID is created later, they need to subscribe again
     participationManager.removeAllSubscriptionsTo(cmd.deletedPartition);
   }
 

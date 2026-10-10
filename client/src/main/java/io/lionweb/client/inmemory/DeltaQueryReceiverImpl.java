@@ -4,6 +4,7 @@ import io.lionweb.LionWebVersion;
 import io.lionweb.client.delta.DeltaQueryReceiver;
 import io.lionweb.client.delta.messages.DeltaQuery;
 import io.lionweb.client.delta.messages.DeltaQueryResponse;
+import io.lionweb.client.delta.messages.events.CustomErrorCode;
 import io.lionweb.client.delta.messages.events.StandardErrorCode;
 import io.lionweb.client.delta.messages.queries.*;
 import io.lionweb.client.delta.messages.queries.participations.*;
@@ -52,10 +53,10 @@ class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
     } else if (query instanceof ReconnectRequest) {
       ReconnectRequest reconnectRequest = (ReconnectRequest) query;
       if (!participationManager.isActiveParticipation(reconnectRequest.participationId)) {
-        ErrorResponse error = new ErrorResponse(reconnectRequest.queryId);
-        error.errorCode = StandardErrorCode.INVALID_PARTICIPATION.code;
-        error.message = "Unknown participation: " + reconnectRequest.participationId;
-        return error;
+        return new ErrorResponse(
+            reconnectRequest.queryId,
+            StandardErrorCode.INVALID_PARTICIPATION,
+            "Unknown participation: " + reconnectRequest.participationId);
       }
       currentParticipationId = reconnectRequest.participationId;
       return new ReconnectResponse(
@@ -99,7 +100,15 @@ class DeltaQueryReceiverImpl implements DeltaQueryReceiver {
       participationManager.unsubscribeFromPartition(currentParticipationId, req.partition);
       return new UnsubscribeFromPartitionContentsResponse(req.queryId);
     }
-    throw new UnsupportedOperationException("Not supported yet.");
+    return notImplemented(query);
+  }
+
+  /** Builds the error response for a recognized query that this server does not implement. */
+  private static @NotNull ErrorResponse notImplemented(@NotNull DeltaQuery query) {
+    return new ErrorResponse(
+        query.queryId,
+        CustomErrorCode.NOT_IMPLEMENTED,
+        "Unsupported query type: " + query.getClass().getName());
   }
 
   /**
