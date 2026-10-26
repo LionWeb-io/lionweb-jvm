@@ -27,7 +27,7 @@ ktlint = { id = "org.jlleitschuh.gradle.ktlint", version = "14.2.0" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 dokka = { id = "org.jetbrains.dokka", version = "2.2.0" }
 vt-publish = { id = "com.vanniktech.maven.publish", version = "0.37.0" }
-build-config = { id = "com.github.gmazzo.buildconfig", version = "6.0.10" }
+build-config = { id = "com.github.gmazzo.buildconfig", version = "6.1.2" }
 release = { id = "net.researchgate.release", version = "3.2.0"}
 versioncheck = { id="io.github.ben-manes.versions", version = "0.58.0" }
 spotless = { id = "com.diffplug.spotless", version = "8.10.4" }
