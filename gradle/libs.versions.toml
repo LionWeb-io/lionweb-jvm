@@ -35,7 +35,7 @@ gradle-publish = { id = "com.gradle.plugin-publish", version.ref = "gradlePublis
 
 [libraries]
 protobuf = { group = "com.google.protobuf", name = "protobuf-java", version.ref = "protobufVersion" }
-okhttp = { module = "com.squareup.okhttp3:okhttp", version = "5.5.0" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version = "5.5.1" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junitVersion" }
 junit-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junitVersion" }
 junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junitVersion" }
