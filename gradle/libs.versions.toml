@@ -29,7 +29,7 @@ dokka = { id = "org.jetbrains.dokka", version = "2.2.0" }
 vt-publish = { id = "com.vanniktech.maven.publish", version = "0.37.0" }
 build-config = { id = "com.github.gmazzo.buildconfig", version = "6.1.2" }
 release = { id = "net.researchgate.release", version = "3.2.0"}
-versioncheck = { id="io.github.ben-manes.versions", version = "0.58.0" }
+versioncheck = { id="io.github.ben-manes.versions", version = "0.66.0" }
 spotless = { id = "com.diffplug.spotless", version = "8.10.4" }
 gradle-publish = { id = "com.gradle.plugin-publish", version.ref = "gradlePublishPluginVersion" }
 
