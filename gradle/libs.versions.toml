@@ -1,7 +1,7 @@
 [versions]
 clikt = "5.1.0"
 javaWebSocket = "1.6.0"
-protobufVersion = "4.35.1"
+protobufVersion = "4.36.2"
 junitVersion="5.13.4"
 guavaVersion = "33.7.2-jre"
 commonsMathVersion = "3.6.1"
