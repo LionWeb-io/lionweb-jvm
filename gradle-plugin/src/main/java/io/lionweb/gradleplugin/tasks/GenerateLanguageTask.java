@@ -5,7 +5,6 @@ import io.lionweb.gradleplugin.generators.LanguageJavaCodeGenerator;
 import io.lionweb.language.Language;
 import io.lionweb.serialization.JsonSerialization;
 import io.lionweb.serialization.SerializationProvider;
-import io.lionweb.serialization.TopologicalLanguageSorter;
 import io.lionweb.serialization.data.SerializationChunk;
 import java.io.File;
 import java.io.IOException;
@@ -89,13 +88,13 @@ public abstract class GenerateLanguageTask extends AbstractGenerationTask {
       List<SerializationChunk> projectChunks,
       List<SerializationChunk> dependenciesChunks,
       LanguageJavaCodeGenerator languageJavaCodeGenerator) {
-    TopologicalLanguageSorter sorter = new TopologicalLanguageSorter(lionWebVersion);
     List<SerializationChunk> allChunks =
         new ArrayList<>(projectChunks.size() + dependenciesChunks.size());
     allChunks.addAll(dependenciesChunks);
     allChunks.addAll(projectChunks);
     List<SerializationChunk> sortedChunks =
-        sorter.topologicalSort(
+        sortLanguageChunks(
+            lionWebVersion,
             allChunks.stream()
                 .filter(
                     c ->
