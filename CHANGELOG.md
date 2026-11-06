@@ -11,6 +11,7 @@ Reading serialized values is now stricter, following the 2024.1 specification. C
 
 Other changes:
 
+* Gradle plugin: `generateLWLanguages` and `generateLWNodeClasses` no longer fail with `Unknown dependency` on languages that declare a dependency on LionCore M3 or LionCore builtins (issue #522)
 * CI: run integration tests and javadoc within the build jobs, build the server Docker image once per functional test job, cancel superseded runs and test on Java 17 and 25 only
 * Fix build warnings: use the `io.github.ben-manes.versions` plugin id and link javadoc to the Java 11 API
 

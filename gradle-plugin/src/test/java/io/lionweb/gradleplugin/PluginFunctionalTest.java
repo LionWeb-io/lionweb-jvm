@@ -61,6 +61,77 @@ public class PluginFunctionalTest {
     System.out.println(javaCode);
   }
 
+  @Test
+  public void testGenerateLWLanguagesWithDependenciesOnLionCore() throws IOException {
+    setupProjectWithLionCoreDependencies();
+
+    BuildResult result =
+        GradleRunner.create()
+            .withProjectDir(testProjectDir)
+            .withPluginClasspath()
+            .withArguments("generateLWLanguages", "--info")
+            .build();
+
+    assertEquals(SUCCESS, result.task(":generateLWLanguages").getOutcome());
+    String markersLanguage = readGeneratedFile("io/lionweb/test/MarkersLanguage.java");
+    assertTrue(
+        markersLanguage.contains(
+            "this.addDependency(LionCore.getInstance(LionWebVersion.v2023_1));"),
+        markersLanguage);
+    assertTrue(
+        markersLanguage.contains(
+            "this.addDependency(LionCoreBuiltins.getInstance(LionWebVersion.v2023_1));"),
+        markersLanguage);
+    String notesLanguage = readGeneratedFile("io/lionweb/test/NotesLanguage.java");
+    assertTrue(
+        notesLanguage.contains(
+            "this.addDependency(LionCoreBuiltins.getInstance(LionWebVersion.v2023_1));"),
+        notesLanguage);
+  }
+
+  @Test
+  public void testGenerateLWNodeClassesWithDependenciesOnLionCore() throws IOException {
+    setupProjectWithLionCoreDependencies();
+
+    BuildResult result =
+        GradleRunner.create()
+            .withProjectDir(testProjectDir)
+            .withPluginClasspath()
+            .withArguments("generateLWNodeClasses", "--info")
+            .build();
+
+    assertEquals(SUCCESS, result.task(":generateLWNodeClasses").getOutcome());
+    assertTrue(result.getOutput().contains("LionWeb Language loaded: markers"));
+    assertTrue(
+        new File(testProjectDir, "build/generated-lionweb/io/lionweb/test/Note.java").exists(),
+        result.getOutput());
+  }
+
+  private void setupProjectWithLionCoreDependencies() throws IOException {
+    writeFile(settingsFile, "rootProject.name = \"my-project-1\"");
+    writeFile(
+        buildFile,
+        "plugins {\n"
+            + "  id(\"io.lionweb\")\n"
+            + "}\n"
+            + "lionweb { defaultPackageName.set(\"io.lionweb.test\") }");
+    // Annotates Concept, so it declares dependencies on LionCore M3 and builtins
+    writeFile(
+        new File(testProjectDir, "src/main/lionweb/markers.json"),
+        readResource("/markers.language.json"));
+    // Declares a dependency on builtins only
+    writeFile(
+        new File(testProjectDir, "src/main/lionweb/notes.json"),
+        readResource("/notes.language.json"));
+  }
+
+  private String readGeneratedFile(String path) throws IOException {
+    return new String(
+        Files.readAllBytes(
+            testProjectDir.toPath().resolve("build/generated-lionweb").resolve(path)),
+        StandardCharsets.UTF_8);
+  }
+
   private String readResource(String path) throws IOException {
     String text;
     try (InputStream in = getClass().getResourceAsStream(path)) {
