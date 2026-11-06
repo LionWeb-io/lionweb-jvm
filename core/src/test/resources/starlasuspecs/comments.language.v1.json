@@ -12,28 +12,28 @@
   ],
   "nodes": [
     {
-      "id": "$com-strumenta-starlasu-comments-$Comment-$text",
+      "id": "com-strumenta-starlasu-comments",
       "classifier": {
         "language": "LionCore-M3",
         "version": "2023.1",
-        "key": "Property"
+        "key": "Language"
       },
       "properties": [
         {
           "property": {
             "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "IKeyed-key"
+            "key": "Language-version"
           },
-          "value": "$Comment-$text"
+          "value": "1.1"
         },
         {
           "property": {
             "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "Feature-optional"
+            "key": "IKeyed-key"
           },
-          "value": "false"
+          "value": "starlasu-comments"
         },
         {
           "property": {
@@ -41,30 +41,36 @@
             "version": "2023.1",
             "key": "LionCore-builtins-INamed-name"
           },
-          "value": "text"
+          "value": "com.strumenta.starlasu.comments"
         }
       ],
-      "containments": [],
+      "containments": [
+        {
+          "containment": {
+            "language": "LionCore-M3",
+            "version": "2023.1",
+            "key": "Language-entities"
+          },
+          "children": [
+            "com-strumenta-starlasu-comments-Comment"
+          ]
+        }
+      ],
       "references": [
         {
           "reference": {
             "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "Property-type"
+            "key": "Language-dependsOn"
           },
-          "targets": [
-            {
-              "resolveInfo": "String",
-              "reference": "LionCore-builtins-String"
-            }
-          ]
+          "targets": []
         }
       ],
       "annotations": [],
-      "parent": "$com-strumenta-starlasu-comments-$Comment"
+      "parent": null
     },
     {
-      "id": "$com-strumenta-starlasu-comments-$Comment",
+      "id": "com-strumenta-starlasu-comments-Comment",
       "classifier": {
         "language": "LionCore-M3",
         "version": "2023.1",
@@ -73,17 +79,17 @@
       "properties": [
         {
           "property": {
-            "language": "LionCore-builtins",
+            "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "LionCore-builtins-INamed-name"
+            "key": "IKeyed-key"
           },
           "value": "Comment"
         },
         {
           "property": {
-            "language": "LionCore-M3",
+            "language": "LionCore-builtins",
             "version": "2023.1",
-            "key": "IKeyed-key"
+            "key": "LionCore-builtins-INamed-name"
           },
           "value": "Comment"
         }
@@ -96,7 +102,7 @@
             "key": "Classifier-features"
           },
           "children": [
-            "$com-strumenta-starlasu-comments-$Comment-$text"
+            "com-strumenta-starlasu-comments-Comment-text"
           ]
         }
       ],
@@ -135,20 +141,20 @@
       "parent": "com-strumenta-starlasu-comments"
     },
     {
-      "id": "com-strumenta-starlasu-comments",
+      "id": "com-strumenta-starlasu-comments-Comment-text",
       "classifier": {
         "language": "LionCore-M3",
         "version": "2023.1",
-        "key": "Language"
+        "key": "Property"
       },
       "properties": [
         {
           "property": {
             "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "Language-version"
+            "key": "Feature-optional"
           },
-          "value": "1"
+          "value": "false"
         },
         {
           "property": {
@@ -156,7 +162,7 @@
             "version": "2023.1",
             "key": "IKeyed-key"
           },
-          "value": "starlasu-comments"
+          "value": "Comment-text"
         },
         {
           "property": {
@@ -164,38 +170,27 @@
             "version": "2023.1",
             "key": "LionCore-builtins-INamed-name"
           },
-          "value": "com.strumenta.starlasu.comments"
+          "value": "text"
         }
       ],
-      "containments": [
-        {
-          "containment": {
-            "language": "LionCore-M3",
-            "version": "2023.1",
-            "key": "Language-entities"
-          },
-          "children": [
-            "$com-strumenta-starlasu-comments-$Comment"
-          ]
-        }
-      ],
+      "containments": [],
       "references": [
         {
           "reference": {
             "language": "LionCore-M3",
             "version": "2023.1",
-            "key": "Language-dependsOn"
+            "key": "Property-type"
           },
           "targets": [
             {
-              "resolveInfo": "com.strumenta.StarLasu",
-              "reference": "com-strumenta-StarLasu"
+              "resolveInfo": "String",
+              "reference": "LionCore-builtins-String"
             }
           ]
         }
       ],
       "annotations": [],
-      "parent": null
+      "parent": "com-strumenta-starlasu-comments-Comment"
     }
   ]
 }
