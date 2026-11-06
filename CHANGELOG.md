@@ -1,13 +1,6 @@
 # Changelog
 
-### Version 1.4.8
-
-Reading serialized values is now stricter, following the 2024.1 specification. Chunks that were silently accepted before may now be rejected (issue #462):
-
-* Property values, ids, parents, meta-pointer fields, `reference` and `resolveInfo` must be JSON strings or null: other JSON values (e.g. `"value": 123`) are reported with a `DeserializationException` instead of being read as null
-* `Boolean` values must be exactly `"true"` or `"false"` (e.g. `"TRUE"` and `"1"` are rejected); a null value now stays null instead of becoming `false`
-* `Integer` values must be base-10 with an optional sign, ASCII digits only and no leading zeros (e.g. `"00002"` is rejected); values outside the 32-bit range are rejected with an explicit error
-* `StructuredDataType` values: missing, null, unknown or wrongly typed fields are rejected on read; writing an instance with an unset field throws `IllegalStateException` instead of writing `null`
+### Version 1.4.9
 
 `LowLevelJsonSerialization` (and so `JsonSerialization`) now enforces the structure of chunks, in LionWeb 2023.1 and 2024.1 (issue #463). Chunks that were silently accepted before may now be rejected with a `DeserializationException`:
 
@@ -16,6 +9,15 @@ Reading serialized values is now stricter, following the 2024.1 specification. C
 * `languages` must not contain duplicates and must list all the languages used by meta-pointers
 * when parsing text or files, JSON which is not strictly RFC 8259 is rejected
 * to load such chunks anyway, use `LowLevelJsonSerialization.tolerant()` or `JsonSerialization.setStrictChunkStructure(false)`
+
+### Version 1.4.8
+
+Reading serialized values is now stricter, following the 2024.1 specification. Chunks that were silently accepted before may now be rejected (issue #462):
+
+* Property values, ids, parents, meta-pointer fields, `reference` and `resolveInfo` must be JSON strings or null: other JSON values (e.g. `"value": 123`) are reported with a `DeserializationException` instead of being read as null
+* `Boolean` values must be exactly `"true"` or `"false"` (e.g. `"TRUE"` and `"1"` are rejected); a null value now stays null instead of becoming `false`
+* `Integer` values must be base-10 with an optional sign, ASCII digits only and no leading zeros (e.g. `"00002"` is rejected); values outside the 32-bit range are rejected with an explicit error
+* `StructuredDataType` values: missing, null, unknown or wrongly typed fields are rejected on read; writing an instance with an unset field throws `IllegalStateException` instead of writing `null`
 
 Other changes:
 
