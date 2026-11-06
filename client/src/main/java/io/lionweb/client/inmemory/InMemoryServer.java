@@ -93,7 +93,7 @@ public class InMemoryServer {
     RepositoryData repositoryData = getRepository(repositoryName);
     repositoryData.lock.readLock().lock();
     try {
-      return new ArrayList<>(repositoryData.partitionIDs);
+      return repositoryData.partitionIDs.copy();
     } finally {
       repositoryData.lock.readLock().unlock();
     }

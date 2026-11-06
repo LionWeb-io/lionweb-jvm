@@ -34,7 +34,106 @@ import org.jetbrains.annotations.Nullable;
  */
 class RepositoryData {
   @NotNull RepositoryConfiguration configuration;
-  final Set<String> partitionIDs = new LinkedHashSet<>();
+  final PartitionIDs partitionIDs = new PartitionIDs();
+
+  /**
+   * The ids of the partitions, in creation order. Membership checks, additions and removals are
+   * O(1) (a linked hash set). Listing the partitions copies a cached array, rebuilt only after the
+   * partitions changed, so that repeated listings are a plain array copy.
+   */
+  static final class PartitionIDs extends AbstractSet<String> {
+    private final Set<String> ids = new LinkedHashSet<>();
+
+    /**
+     * The ids as a list, never modified, or null after a change. Readers holding the read lock may
+     * build it concurrently, hence volatile.
+     */
+    private volatile @Nullable ArrayList<String> snapshot;
+
+    @Override
+    public int size() {
+      return ids.size();
+    }
+
+    @Override
+    public boolean contains(Object o) {
+      return ids.contains(o);
+    }
+
+    @Override
+    public boolean add(String id) {
+      return changed(ids.add(id));
+    }
+
+    @Override
+    public boolean remove(Object o) {
+      return changed(ids.remove(o));
+    }
+
+    @Override
+    public boolean removeAll(Collection<?> toRemove) {
+      boolean changed = false;
+      for (Object id : toRemove) {
+        changed |= ids.remove(id);
+      }
+      return changed(changed);
+    }
+
+    @Override
+    public void clear() {
+      changed(!ids.isEmpty());
+      ids.clear();
+    }
+
+    private boolean changed(boolean changed) {
+      if (changed) {
+        snapshot = null;
+      }
+      return changed;
+    }
+
+    @Override
+    public Object[] toArray() {
+      return snapshot().toArray();
+    }
+
+    private ArrayList<String> snapshot() {
+      ArrayList<String> current = snapshot;
+      if (current == null) {
+        current = new ArrayList<>(ids);
+        snapshot = current;
+      }
+      return current;
+    }
+
+    /** A copy of the ids, in creation order: a single array copy, unless the partitions changed. */
+    List<String> copy() {
+      return new ArrayList<>(snapshot());
+    }
+
+    @Override
+    public Iterator<String> iterator() {
+      Iterator<String> it = ids.iterator();
+      return new Iterator<String>() {
+        @Override
+        public boolean hasNext() {
+          return it.hasNext();
+        }
+
+        @Override
+        public String next() {
+          return it.next();
+        }
+
+        @Override
+        public void remove() {
+          it.remove();
+          snapshot = null;
+        }
+      };
+    }
+  }
+
   final Map<String, SerializedClassifierInstance> nodesByID = new ConcurrentHashMap<>();
 
   /** Pre-computed index: ClassifierKey → list of node IDs. Kept in sync with nodesByID. */
@@ -297,7 +396,12 @@ class RepositoryData {
   final ReadWriteLock lock = new ReentrantReadWriteLock();
 
   private static final class StorePlan {
-    final Map<String, SerializedClassifierInstance> requested = new LinkedHashMap<>();
+    /** The nodes of the request, in the order of the request, without duplicates. */
+    final List<SerializedClassifierInstance> nodes;
+
+    /** The nodes of the request by id. */
+    final Map<String, SerializedClassifierInstance> requested;
+
     final Set<String> newPartitions = new LinkedHashSet<>();
 
     /** Nodes not in the request which are moved under a node in the request. */
@@ -308,6 +412,16 @@ class RepositoryData {
 
     /** Nodes to delete, including descendants. */
     final Set<String> removed = new LinkedHashSet<>();
+
+    StorePlan(List<SerializedClassifierInstance> nodes) {
+      this.nodes = nodes;
+      this.requested = new HashMap<>(capacityFor(nodes.size()));
+    }
+  }
+
+  /** The initial capacity of a hash map or set expected to hold the given number of entries. */
+  private static int capacityFor(int expectedSize) {
+    return (int) Math.min((long) expectedSize * 4 / 3 + 1, Integer.MAX_VALUE);
   }
 
   /**
@@ -381,7 +495,7 @@ class RepositoryData {
     if (nodes == null) {
       throw BulkCommandException.of(BulkMessageKind.NULL_CHUNK, "Chunk missing");
     }
-    StorePlan plan = new StorePlan();
+    StorePlan plan = new StorePlan(nodes);
     for (SerializedClassifierInstance n : nodes) {
       if (plan.requested.put(n.getID(), n) != null) {
         throw BulkCommandException.of(
@@ -427,45 +541,20 @@ class RepositoryData {
     Map<String, SerializedClassifierInstance> requested = plan.requested;
 
     // Who contains what, according to the nodes in the request
-    Map<String, String> claimedBy = new HashMap<>();
-    for (SerializedClassifierInstance n : requested.values()) {
-      List<String> contained = new ArrayList<>(n.getChildren());
-      contained.addAll(n.getAnnotations());
-      for (String id : contained) {
-        if (!requested.containsKey(id) && !nodesByID.containsKey(id)) {
-          throw parentMissing(
-              id, "Node " + id + ", contained in " + n.getID() + ", is unknown (ParentMissing)");
+    Map<String, String> claimedBy = new HashMap<>(capacityFor(nodes.size()));
+    for (SerializedClassifierInstance n : nodes) {
+      for (SerializedContainmentValue containment : n.getContainments()) {
+        for (String id : containment.getChildrenIds()) {
+          claim(claimedBy, requested, n, id);
         }
-        String previous = claimedBy.put(id, n.getID());
-        if (id.equals(n.getID())) {
-          throw BulkCommandException.of(
-              BulkMessageKind.TREE_CYCLE, "Node " + id + " contains itself", "nodeId", id);
-        }
-        if (previous != null) {
-          if (previous.equals(n.getID())) {
-            throw BulkCommandException.of(
-                BulkMessageKind.NODE_LISTED_MORE_THAN_ONCE,
-                "Node " + id + " is contained more than once in " + n.getID(),
-                "nodeId",
-                id,
-                "parentNodeId",
-                n.getID());
-          }
-          throw BulkCommandException.of(
-              BulkMessageKind.NODE_HAS_MULTIPLE_PARENTS,
-              "Node " + id + " is contained in both " + previous + " and " + n.getID(),
-              "nodeId",
-              id,
-              "parentNodeId",
-              previous,
-              "otherParentNodeId",
-              n.getID());
-        }
+      }
+      for (String id : n.getAnnotations()) {
+        claim(claimedBy, requested, n, id);
       }
     }
 
     // Parents of the nodes in the request: they must exist and agree with the containers
-    for (SerializedClassifierInstance n : requested.values()) {
+    for (SerializedClassifierInstance n : nodes) {
       String id = n.getID();
       String parent = n.getParentNodeID();
       String claimant = claimedBy.get(id);
@@ -532,17 +621,21 @@ class RepositoryData {
 
     // Nodes dropped by a node in the request are deleted, unless they are moved elsewhere
     Deque<String> pending = new ArrayDeque<>();
-    for (SerializedClassifierInstance n : requested.values()) {
+    // (what a node in the request keeps is in claimedBy, as all it contains is)
+    for (SerializedClassifierInstance n : nodes) {
       SerializedClassifierInstance current = nodesByID.get(n.getID());
       if (current == null) {
         continue;
       }
-      Set<String> kept = new HashSet<>(n.getChildren());
-      kept.addAll(n.getAnnotations());
-      List<String> before = new ArrayList<>(current.getChildren());
-      before.addAll(current.getAnnotations());
-      for (String id : before) {
-        if (!kept.contains(id) && !claimedBy.containsKey(id)) {
+      for (SerializedContainmentValue containment : current.getContainments()) {
+        for (String id : containment.getChildrenIds()) {
+          if (!claimedBy.containsKey(id)) {
+            pending.add(id);
+          }
+        }
+      }
+      for (String id : current.getAnnotations()) {
+        if (!claimedBy.containsKey(id)) {
           pending.add(id);
         }
       }
@@ -558,21 +651,22 @@ class RepositoryData {
     }
 
     // Every node must end up in a partition, without loops
-    // walkOf: node -> index of the walk which visited it. A node visited by an earlier walk is
-    // verified (a failing walk throws); meeting a node of the current walk again is a cycle.
-    Map<String, Integer> walkOf = new HashMap<>();
-    int walk = 0;
+    // visited: TRUE for the nodes already verified, FALSE for the nodes on the current walk (a
+    // failing walk throws). Meeting a node of the current walk again is a cycle.
+    Map<String, Boolean> visited =
+        new HashMap<>(capacityFor(nodes.size() + plan.implicitlyMovedTo.size()));
+    List<String> path = new ArrayList<>();
     for (Iterator<String> it =
             new ConcatIterator(
-                requested.keySet().iterator(), plan.implicitlyMovedTo.keySet().iterator());
+                new IdIterator(nodes.iterator()), plan.implicitlyMovedTo.keySet().iterator());
         it.hasNext(); ) {
       String start = it.next();
-      Integer walkIndex = ++walk;
       String current = start;
+      path.clear();
       while (true) {
-        Integer previous = walkOf.putIfAbsent(current, walkIndex);
+        Boolean previous = visited.putIfAbsent(current, Boolean.FALSE);
         if (previous != null) {
-          if (previous.equals(walkIndex)) {
+          if (!previous) {
             throw BulkCommandException.of(
                 BulkMessageKind.TREE_CYCLE,
                 "Node " + start + " would be among its own ancestors",
@@ -584,13 +678,14 @@ class RepositoryData {
         if (plan.removed.contains(current)) {
           throw parentMissing(start, "Node " + start + " is placed under a deleted node");
         }
-        String parent;
-        if (claimedBy.containsKey(current)) {
-          parent = claimedBy.get(current);
-        } else if (requested.containsKey(current)) {
-          parent = requested.get(current).getParentNodeID();
-        } else {
-          parent = nodesByID.get(current).getParentNodeID();
+        path.add(current);
+        String parent = claimedBy.get(current);
+        if (parent == null) {
+          SerializedClassifierInstance requestedNode = requested.get(current);
+          parent =
+              requestedNode != null
+                  ? requestedNode.getParentNodeID()
+                  : nodesByID.get(current).getParentNodeID();
         }
         if (parent == null) {
           if (!partitions.test(current)) {
@@ -603,8 +698,66 @@ class RepositoryData {
         }
         current = parent;
       }
+      for (String verified : path) {
+        visited.put(verified, Boolean.TRUE);
+      }
     }
     return plan;
+  }
+
+  /** Records that {@code container} (a node in the request) contains {@code id}. */
+  private void claim(
+      Map<String, String> claimedBy,
+      Map<String, SerializedClassifierInstance> requested,
+      SerializedClassifierInstance n,
+      String id) {
+    if (!requested.containsKey(id) && !nodesByID.containsKey(id)) {
+      throw parentMissing(
+          id, "Node " + id + ", contained in " + n.getID() + ", is unknown (ParentMissing)");
+    }
+    String previous = claimedBy.put(id, n.getID());
+    if (id.equals(n.getID())) {
+      throw BulkCommandException.of(
+          BulkMessageKind.TREE_CYCLE, "Node " + id + " contains itself", "nodeId", id);
+    }
+    if (previous != null) {
+      if (previous.equals(n.getID())) {
+        throw BulkCommandException.of(
+            BulkMessageKind.NODE_LISTED_MORE_THAN_ONCE,
+            "Node " + id + " is contained more than once in " + n.getID(),
+            "nodeId",
+            id,
+            "parentNodeId",
+            n.getID());
+      }
+      throw BulkCommandException.of(
+          BulkMessageKind.NODE_HAS_MULTIPLE_PARENTS,
+          "Node " + id + " is contained in both " + previous + " and " + n.getID(),
+          "nodeId",
+          id,
+          "parentNodeId",
+          previous,
+          "otherParentNodeId",
+          n.getID());
+    }
+  }
+
+  private static final class IdIterator implements Iterator<String> {
+    private final Iterator<SerializedClassifierInstance> nodes;
+
+    IdIterator(Iterator<SerializedClassifierInstance> nodes) {
+      this.nodes = nodes;
+    }
+
+    @Override
+    public boolean hasNext() {
+      return nodes.hasNext();
+    }
+
+    @Override
+    public String next() {
+      return nodes.next().getID();
+    }
   }
 
   private static final class ConcatIterator implements Iterator<String> {
@@ -670,7 +823,7 @@ class RepositoryData {
 
   /** Applies a validated plan. This is not expected to fail. */
   private void apply(StorePlan plan) {
-    for (SerializedClassifierInstance updatedNode : plan.requested.values()) {
+    for (SerializedClassifierInstance updatedNode : plan.nodes) {
       SerializedClassifierInstance existing = nodesByID.get(updatedNode.getID());
       if (existing == null) {
         indexAdd(updatedNode);
@@ -683,7 +836,9 @@ class RepositoryData {
       removeContainedNode(oldParentAndChild[0], oldParentAndChild[1]);
     }
     plan.implicitlyMovedTo.forEach((id, parent) -> nodesByID.get(id).setParentNodeID(parent));
-    nodesByID.putAll(plan.requested);
+    for (SerializedClassifierInstance node : plan.nodes) {
+      nodesByID.put(node.getID(), node);
+    }
     partitionIDs.addAll(plan.newPartitions);
     plan.removed.forEach(this::removeFromIndexAndNodes);
   }
