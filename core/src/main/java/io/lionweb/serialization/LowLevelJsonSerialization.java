@@ -1,5 +1,7 @@
 package io.lionweb.serialization;
 
+import static io.lionweb.serialization.JsonSerializationKeys.*;
+
 import com.google.common.base.Charsets;
 import com.google.gson.*;
 import com.google.gson.internal.LazilyParsedNumber;
@@ -33,9 +35,8 @@ import javax.annotation.Nullable;
 public class LowLevelJsonSerialization {
 
   private static final List<String> NODE_MEMBERS =
-      List.of(
-          "id", "classifier", "properties", "containments", "references", "annotations", "parent");
-  private static final List<String> META_POINTER_MEMBERS = List.of("language", "version", "key");
+      List.of(ID, CLASSIFIER, PROPERTIES, CONTAINMENTS, REFERENCES, ANNOTATIONS, PARENT);
+  private static final List<String> META_POINTER_MEMBERS = List.of(LANGUAGE, VERSION, KEY);
 
   private final boolean strict;
 
@@ -85,7 +86,7 @@ public class LowLevelJsonSerialization {
     SerializationChunk serializationChunk = new SerializationChunk();
     if (jsonElement.isJsonObject()) {
       JsonObject topLevel = jsonElement.getAsJsonObject();
-      checkNoExtraKeys(topLevel, List.of("nodes", "serializationFormatVersion", "languages"));
+      checkNoExtraKeys(topLevel, List.of(NODES, SERIALIZATION_FORMAT_VERSION, LANGUAGES));
       readSerializationFormatVersion(serializationChunk, topLevel);
       Set<LanguageVersion> declaredLanguages = readLanguages(serializationChunk, topLevel);
       deserializeClassifierInstances(serializationChunk, topLevel, declaredLanguages);
@@ -138,58 +139,58 @@ public class LowLevelJsonSerialization {
   public JsonElement serializeToJsonElement(SerializationChunk serializationChunk) {
     JsonObject topLevel = new JsonObject();
     topLevel.addProperty(
-        "serializationFormatVersion", serializationChunk.getSerializationFormatVersion());
+        SERIALIZATION_FORMAT_VERSION, serializationChunk.getSerializationFormatVersion());
 
     JsonArray languages = new JsonArray();
     serializationChunk.getLanguages().forEach(m -> languages.add(serializeToJsonElement(m)));
-    topLevel.add("languages", languages);
+    topLevel.add(LANGUAGES, languages);
 
     JsonArray nodes = new JsonArray();
     for (SerializedClassifierInstance node : serializationChunk.getClassifierInstances()) {
       JsonObject nodeJson = new JsonObject();
-      nodeJson.addProperty("id", node.getID());
+      nodeJson.addProperty(ID, node.getID());
 
-      nodeJson.add("classifier", serializeToJsonElement(node.getClassifier()));
+      nodeJson.add(CLASSIFIER, serializeToJsonElement(node.getClassifier()));
 
       JsonArray properties = new JsonArray();
       for (SerializedPropertyValue propertyValue : node.getProperties()) {
         JsonObject property = new JsonObject();
-        property.add("property", serializeToJsonElement(propertyValue.getMetaPointer()));
-        property.addProperty("value", propertyValue.getValue());
+        property.add(PROPERTY, serializeToJsonElement(propertyValue.getMetaPointer()));
+        property.addProperty(VALUE, propertyValue.getValue());
         properties.add(property);
       }
-      nodeJson.add("properties", properties);
+      nodeJson.add(PROPERTIES, properties);
 
       JsonArray containments = new JsonArray();
       for (SerializedContainmentValue childrenValue : node.getContainments()) {
         JsonObject children = new JsonObject();
-        children.add("containment", serializeToJsonElement(childrenValue.getMetaPointer()));
-        children.add("children", SerializationUtils.toJsonArray(childrenValue.getChildrenIds()));
+        children.add(CONTAINMENT, serializeToJsonElement(childrenValue.getMetaPointer()));
+        children.add(CHILDREN, SerializationUtils.toJsonArray(childrenValue.getChildrenIds()));
         containments.add(children);
       }
-      nodeJson.add("containments", containments);
+      nodeJson.add(CONTAINMENTS, containments);
 
       JsonArray references = new JsonArray();
       for (SerializedReferenceValue referenceValue : node.getReferences()) {
         JsonObject reference = new JsonObject();
-        reference.add("reference", serializeToJsonElement(referenceValue.getMetaPointer()));
+        reference.add(REFERENCE, serializeToJsonElement(referenceValue.getMetaPointer()));
         reference.add(
-            "targets", SerializationUtils.toJsonArrayOfReferenceValues(referenceValue.getValue()));
+            TARGETS, SerializationUtils.toJsonArrayOfReferenceValues(referenceValue.getValue()));
         references.add(reference);
       }
-      nodeJson.add("references", references);
+      nodeJson.add(REFERENCES, references);
 
       JsonArray annotations = new JsonArray();
       for (String annotationID : node.getAnnotations()) {
         annotations.add(annotationID);
       }
-      nodeJson.add("annotations", annotations);
+      nodeJson.add(ANNOTATIONS, annotations);
 
-      nodeJson.addProperty("parent", node.getParentNodeID());
+      nodeJson.addProperty(PARENT, node.getParentNodeID());
 
       nodes.add(nodeJson);
     }
-    topLevel.add("nodes", nodes);
+    topLevel.add(NODES, nodes);
 
     return topLevel;
   }
@@ -222,40 +223,40 @@ public class LowLevelJsonSerialization {
 
   private void readSerializationFormatVersion(
       SerializationChunk serializationChunk, JsonObject topLevel) {
-    if (!topLevel.has("serializationFormatVersion")) {
+    if (!topLevel.has(SERIALIZATION_FORMAT_VERSION)) {
       throw new IllegalArgumentException("serializationFormatVersion not specified");
     }
-    JsonElement serializationFormatVersion = topLevel.get("serializationFormatVersion");
-    requireIsString(serializationFormatVersion, "serializationFormatVersion");
+    JsonElement serializationFormatVersion = topLevel.get(SERIALIZATION_FORMAT_VERSION);
+    requireIsString(serializationFormatVersion, SERIALIZATION_FORMAT_VERSION);
     String serializationFormatVersionValue = serializationFormatVersion.getAsString();
     serializationChunk.setSerializationFormatVersion(serializationFormatVersionValue);
   }
 
   private Set<LanguageVersion> readLanguages(
       SerializationChunk serializationChunk, JsonObject topLevel) {
-    if (!topLevel.has("languages")) {
+    if (!topLevel.has(LANGUAGES)) {
       throw new IllegalArgumentException("languages not specified");
     }
     Set<LanguageVersion> declaredLanguages = new HashSet<>();
-    if (topLevel.get("languages").isJsonArray()) {
-      topLevel.get("languages").getAsJsonArray().asList().stream()
+    if (topLevel.get(LANGUAGES).isJsonArray()) {
+      topLevel.get(LANGUAGES).getAsJsonArray().asList().stream()
           .forEach(
               element -> {
                 try {
                   LanguageVersion languageKeyVersion;
                   if (element.isJsonObject()) {
                     JsonObject jsonObject = element.getAsJsonObject();
-                    checkNoExtraKeys(jsonObject, List.of("key", "version"));
-                    if (!jsonObject.has("key") || !jsonObject.has("version")) {
+                    checkNoExtraKeys(jsonObject, List.of(KEY, VERSION));
+                    if (!jsonObject.has(KEY) || !jsonObject.has(VERSION)) {
                       throw new IllegalArgumentException(
                           "Language should have keys key and version. Found: " + element);
                     }
-                    requireIsString(jsonObject.get("key"), "key");
-                    requireIsString(jsonObject.get("version"), "version");
+                    requireIsString(jsonObject.get(KEY), KEY);
+                    requireIsString(jsonObject.get(VERSION), VERSION);
                     languageKeyVersion =
                         LanguageVersion.of(
-                            jsonObject.get("key").getAsString(),
-                            jsonObject.get("version").getAsString());
+                            jsonObject.get(KEY).getAsString(),
+                            jsonObject.get(VERSION).getAsString());
                   } else {
                     throw new IllegalArgumentException(
                         "Language should be an object. Found: " + element);
@@ -292,7 +293,7 @@ public class LowLevelJsonSerialization {
               });
     } else {
       throw new IllegalArgumentException(
-          "We expected a Json Array, we got instead: " + topLevel.get("languages"));
+          "We expected a Json Array, we got instead: " + topLevel.get(LANGUAGES));
     }
     return declaredLanguages;
   }
@@ -301,11 +302,11 @@ public class LowLevelJsonSerialization {
       SerializationChunk serializationChunk,
       JsonObject topLevel,
       Set<LanguageVersion> declaredLanguages) {
-    if (!topLevel.has("nodes")) {
+    if (!topLevel.has(NODES)) {
       throw new IllegalArgumentException("nodes not specified");
     }
-    if (topLevel.get("nodes").isJsonArray()) {
-      topLevel.get("nodes").getAsJsonArray().asList().stream()
+    if (topLevel.get(NODES).isJsonArray()) {
+      topLevel.get(NODES).getAsJsonArray().asList().stream()
           .forEach(
               element -> {
                 try {
@@ -323,22 +324,22 @@ public class LowLevelJsonSerialization {
               });
     } else {
       throw new IllegalArgumentException(
-          "We expected a Json Array, we got instead: " + topLevel.get("nodes"));
+          "We expected a Json Array, we got instead: " + topLevel.get(NODES));
     }
   }
 
   private JsonElement serializeToJsonElement(MetaPointer metapointer) {
     JsonObject jsonObject = new JsonObject();
-    jsonObject.addProperty("language", metapointer.getLanguage());
-    jsonObject.addProperty("version", metapointer.getVersion());
-    jsonObject.addProperty("key", metapointer.getKey());
+    jsonObject.addProperty(LANGUAGE, metapointer.getLanguage());
+    jsonObject.addProperty(VERSION, metapointer.getVersion());
+    jsonObject.addProperty(KEY, metapointer.getKey());
     return jsonObject;
   }
 
   private JsonElement serializeToJsonElement(LanguageVersion languageKeyVersion) {
     JsonObject jsonObject = new JsonObject();
-    jsonObject.addProperty("key", languageKeyVersion.getKey());
-    jsonObject.addProperty("version", languageKeyVersion.getVersion());
+    jsonObject.addProperty(KEY, languageKeyVersion.getKey());
+    jsonObject.addProperty(VERSION, languageKeyVersion.getVersion());
     return jsonObject;
   }
 
@@ -358,28 +359,28 @@ public class LowLevelJsonSerialization {
       SerializedClassifierInstance serializedClassifierInstance =
           new SerializedClassifierInstance();
       serializedClassifierInstance.setClassifier(
-          SerializationUtils.tryToGetMetaPointerProperty(jsonObject, "classifier"));
+          SerializationUtils.tryToGetMetaPointerProperty(jsonObject, CLASSIFIER));
       serializedClassifierInstance.setParentNodeID(
-          SerializationUtils.getStringOrNullProperty(jsonObject, "parent"));
+          SerializationUtils.getStringOrNullProperty(jsonObject, PARENT));
 
       serializedClassifierInstance.setID(
-          SerializationUtils.getStringOrNullProperty(jsonObject, "id"));
+          SerializationUtils.getStringOrNullProperty(jsonObject, ID));
 
-      JsonArray properties = jsonObject.get("properties").getAsJsonArray();
+      JsonArray properties = jsonObject.get(PROPERTIES).getAsJsonArray();
       properties.forEach(
           property -> {
             JsonObject propertyJO = property.getAsJsonObject();
             serializedClassifierInstance.unsafeAppendPropertyValue(
                 SerializedPropertyValue.get(
-                    SerializationUtils.tryToGetMetaPointerProperty(propertyJO, "property"),
-                    SerializationUtils.getStringOrNullProperty(propertyJO, "value")));
+                    SerializationUtils.tryToGetMetaPointerProperty(propertyJO, PROPERTY),
+                    SerializationUtils.getStringOrNullProperty(propertyJO, VALUE)));
           });
 
       JsonArray containments;
-      if (jsonObject.has("children") && !strict) {
-        containments = jsonObject.get("children").getAsJsonArray();
-      } else if (jsonObject.has("containments")) {
-        containments = jsonObject.get("containments").getAsJsonArray();
+      if (jsonObject.has(CHILDREN) && !strict) {
+        containments = jsonObject.get(CHILDREN).getAsJsonArray();
+      } else if (jsonObject.has(CONTAINMENTS)) {
+        containments = jsonObject.get(CONTAINMENTS).getAsJsonArray();
       } else {
         throw new UnsupportedOperationException(
             "Node is missing containments entry: " + jsonObject);
@@ -390,21 +391,21 @@ public class LowLevelJsonSerialization {
             JsonObject containmentJO = containmentEntry.getAsJsonObject();
             serializedClassifierInstance.unsafeAppendContainmentValue(
                 new SerializedContainmentValue(
-                    SerializationUtils.tryToGetMetaPointerProperty(containmentJO, "containment"),
-                    SerializationUtils.tryToGetArrayOfIDs(containmentJO, "children")));
+                    SerializationUtils.tryToGetMetaPointerProperty(containmentJO, CONTAINMENT),
+                    SerializationUtils.tryToGetArrayOfIDs(containmentJO, CHILDREN)));
           });
 
-      JsonArray references = jsonObject.get("references").getAsJsonArray();
+      JsonArray references = jsonObject.get(REFERENCES).getAsJsonArray();
       references.forEach(
           referenceEntry -> {
             JsonObject referenceJO = referenceEntry.getAsJsonObject();
             serializedClassifierInstance.unsafeAppendReferenceValue(
                 new SerializedReferenceValue(
-                    SerializationUtils.tryToGetMetaPointerProperty(referenceJO, "reference"),
-                    SerializationUtils.tryToGetArrayOfReferencesProperty(referenceJO, "targets")));
+                    SerializationUtils.tryToGetMetaPointerProperty(referenceJO, REFERENCE),
+                    SerializationUtils.tryToGetArrayOfReferencesProperty(referenceJO, TARGETS)));
           });
 
-      JsonElement annotationsJE = jsonObject.get("annotations");
+      JsonElement annotationsJE = jsonObject.get(ANNOTATIONS);
       if (annotationsJE != null) {
         JsonArray annotations = annotationsJE.getAsJsonArray();
         serializedClassifierInstance.setAnnotations(
@@ -434,23 +435,23 @@ public class LowLevelJsonSerialization {
    * ones.
    */
   private void checkNodeStructure(JsonObject node) {
-    String where = "node " + describeId(node.get("id"));
+    String where = "node " + describeId(node.get(ID));
     checkNoExtraMembers(node, NODE_MEMBERS, where);
-    checkMetaPointerMembers(node.get("classifier"), where + ", classifier");
-    checkEntries(node, "properties", where, List.of("property", "value"), "property");
-    checkEntries(node, "containments", where, List.of("containment", "children"), "containment");
-    checkEntries(node, "references", where, List.of("reference", "targets"), "reference");
-    JsonElement references = node.get("references");
+    checkMetaPointerMembers(node.get(CLASSIFIER), where + ", classifier");
+    checkEntries(node, PROPERTIES, where, List.of(PROPERTY, VALUE), PROPERTY);
+    checkEntries(node, CONTAINMENTS, where, List.of(CONTAINMENT, CHILDREN), CONTAINMENT);
+    checkEntries(node, REFERENCES, where, List.of(REFERENCE, TARGETS), REFERENCE);
+    JsonElement references = node.get(REFERENCES);
     if (references != null && references.isJsonArray()) {
       for (JsonElement reference : references.getAsJsonArray()) {
-        if (reference.isJsonObject() && reference.getAsJsonObject().get("targets") != null) {
-          JsonElement targets = reference.getAsJsonObject().get("targets");
+        if (reference.isJsonObject() && reference.getAsJsonObject().get(TARGETS) != null) {
+          JsonElement targets = reference.getAsJsonObject().get(TARGETS);
           if (targets.isJsonArray()) {
             for (JsonElement target : targets.getAsJsonArray()) {
               if (target.isJsonObject()) {
                 checkNoExtraMembers(
                     target.getAsJsonObject(),
-                    List.of("resolveInfo", "reference"),
+                    List.of(RESOLVE_INFO, REFERENCE),
                     where + ", a target of reference " + describeFeature(reference));
               }
             }
@@ -508,8 +509,8 @@ public class LowLevelJsonSerialization {
   private static String describeFeature(JsonElement entry) {
     if (entry.isJsonObject()) {
       for (JsonElement member : entry.getAsJsonObject().asMap().values()) {
-        if (member.isJsonObject() && member.getAsJsonObject().has("key")) {
-          return describeId(member.getAsJsonObject().get("key"));
+        if (member.isJsonObject() && member.getAsJsonObject().has(KEY)) {
+          return describeId(member.getAsJsonObject().get(KEY));
         }
       }
     }
@@ -530,20 +531,20 @@ public class LowLevelJsonSerialization {
     }
     String where = "node " + (id == null ? "<no id>" : "'" + id + "'");
     if (node.getParentNodeID() != null) {
-      checkValidID(node.getParentNodeID(), "parent", where);
+      checkValidID(node.getParentNodeID(), PARENT, where);
     }
-    checkMetaPointer(node.getClassifier(), "classifier", where, declaredLanguages);
+    checkMetaPointer(node.getClassifier(), CLASSIFIER, where, declaredLanguages);
     for (SerializedPropertyValue property : node.getProperties()) {
-      checkMetaPointer(property.getMetaPointer(), "property", where, declaredLanguages);
+      checkMetaPointer(property.getMetaPointer(), PROPERTY, where, declaredLanguages);
     }
     for (SerializedContainmentValue containment : node.getContainments()) {
-      checkMetaPointer(containment.getMetaPointer(), "containment", where, declaredLanguages);
+      checkMetaPointer(containment.getMetaPointer(), CONTAINMENT, where, declaredLanguages);
       for (String childID : containment.getChildrenIds()) {
         checkValidID(childID, "child in containment " + containment.getMetaPointer(), where);
       }
     }
     for (SerializedReferenceValue reference : node.getReferences()) {
-      checkMetaPointer(reference.getMetaPointer(), "reference", where, declaredLanguages);
+      checkMetaPointer(reference.getMetaPointer(), REFERENCE, where, declaredLanguages);
       for (SerializedReferenceValue.Entry target : reference.getValue()) {
         if (target.getReference() != null) {
           checkValidID(
