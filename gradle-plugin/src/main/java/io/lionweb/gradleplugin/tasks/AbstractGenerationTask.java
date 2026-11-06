@@ -3,11 +3,10 @@ package io.lionweb.gradleplugin.tasks;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import io.lionweb.LionWebVersion;
-import io.lionweb.language.LionCoreBuiltins;
-import io.lionweb.lioncore.LionCore;
 import io.lionweb.serialization.LowLevelJsonSerialization;
 import io.lionweb.serialization.TopologicalLanguageSorter;
 import io.lionweb.serialization.data.SerializationChunk;
+import io.lionweb.utils.ImplicitDependencies;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,17 +62,16 @@ public abstract class AbstractGenerationTask extends DefaultTask {
   /**
    * Sorts the given language chunks so that each language follows the languages it depends on.
    *
-   * <p>Dependencies on LionCore M3 and LionCore builtins are accepted even if they are not among
-   * the given chunks, as those languages are always available.
+   * <p>Dependencies on the {@link ImplicitDependencies implicit dependencies} (LionCore M3 and
+   * LionCore builtins) are accepted even if they are not among the given chunks, as those languages
+   * are always available.
    */
   static List<SerializationChunk> sortLanguageChunks(
       LionWebVersion lionWebVersion, Collection<SerializationChunk> chunks) {
-    Set<String> knownDependencies =
-        Set.of(
-            LionCore.getInstance(lionWebVersion).getID(),
-            LionCoreBuiltins.getInstance(lionWebVersion).getID());
     return new TopologicalLanguageSorter(lionWebVersion)
-        .topologicalSort(chunks, knownDependencies::contains);
+        .topologicalSort(
+            chunks,
+            languageID -> ImplicitDependencies.isImplicitDependency(lionWebVersion, languageID));
   }
 
   protected List<SerializationChunk> loadDependenciesChunks() throws IOException {
