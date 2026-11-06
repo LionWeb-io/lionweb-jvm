@@ -94,7 +94,7 @@ public class TransactionalBulkCommandsTest {
   }
 
   private BulkCommandException assertRejectedAndUnchanged(
-      String expectedKind, Runnable command, String... expectedData) {
+      BulkMessageKind expectedKind, Runnable command, String... expectedData) {
     String before = snapshot();
     BulkCommandException e = assertThrows(BulkCommandException.class, command::run);
     assertEquals(expectedKind, e.getKind(), e.getMessage());
@@ -120,14 +120,15 @@ public class TransactionalBulkCommandsTest {
     SerializedClassifierInstance c2 = node("c2", "p1", "newChild");
     SerializedClassifierInstance newChild = node("newChild", "c2");
     SerializedClassifierInstance d1 = node("d1", "p2", "unknown");
-    assertRejectedAndUnchanged("ParentMissing", () -> store(c2, newChild, d1), "nodeId", "unknown");
+    assertRejectedAndUnchanged(
+        BulkMessageKind.PARENT_MISSING, () -> store(c2, newChild, d1), "nodeId", "unknown");
   }
 
   @Test
   public void storeWithUnknownParentIsRejectedAndNothingChanges() {
     SerializedClassifierInstance orphan = node("orphan", "nowhere");
     assertRejectedAndUnchanged(
-        "ParentMissing",
+        BulkMessageKind.PARENT_MISSING,
         () -> store(node("c2", "p1", "n"), node("n", "c2"), orphan),
         "nodeId",
         "orphan");
@@ -136,7 +137,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void storeOfNonPartitionWithoutParentIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "ParentMissing",
+        BulkMessageKind.PARENT_MISSING,
         () -> store(node("c2", "p1", "n"), node("n", "c2"), node("lost", null)),
         "nodeId",
         "lost");
@@ -146,7 +147,7 @@ public class TransactionalBulkCommandsTest {
   public void storeOfNodeContainedInTwoParentsIsRejectedAndNothingChanges() {
     // The new node is listed by both c2 and d1
     assertRejectedAndUnchanged(
-        "NodeHasMultipleParents",
+        BulkMessageKind.NODE_HAS_MULTIPLE_PARENTS,
         () -> store(node("c2", "p1", "n"), node("n", "c2"), node("d1", "p2", "n")),
         "nodeId",
         "n");
@@ -156,7 +157,7 @@ public class TransactionalBulkCommandsTest {
   public void storeOfExistingNodeListedByTwoParentsIsRejectedAndNothingChanges() {
     // g1 is moved to both c2 and d1, while c1 is not sent
     assertRejectedAndUnchanged(
-        "NodeHasMultipleParents",
+        BulkMessageKind.NODE_HAS_MULTIPLE_PARENTS,
         () -> store(node("c2", "p1", "g1"), node("d1", "p2", "g1")),
         "nodeId",
         "g1");
@@ -165,7 +166,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void storeOfNodeListedTwiceByTheSameParentIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "NodeListedMoreThanOnce",
+        BulkMessageKind.NODE_LISTED_MORE_THAN_ONCE,
         () -> store(node("c2", "p1", "n", "n"), node("n", "c2")),
         "nodeId",
         "n");
@@ -175,13 +176,14 @@ public class TransactionalBulkCommandsTest {
   public void storeOfNodeBothChildAndAnnotationIsRejectedAndNothingChanges() {
     SerializedClassifierInstance c2 = node("c2", "p1", "n");
     c2.addAnnotation("n");
-    assertRejectedAndUnchanged("NodeListedMoreThanOnce", () -> store(c2, node("n", "c2")));
+    assertRejectedAndUnchanged(
+        BulkMessageKind.NODE_LISTED_MORE_THAN_ONCE, () -> store(c2, node("n", "c2")));
   }
 
   @Test
   public void storeOfNodeSentTwiceIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "DuplicateNodeId",
+        BulkMessageKind.DUPLICATE_NODE_ID,
         () -> store(node("c2", "p1", "n"), node("n", "c2"), node("n", "c2")),
         "nodeId",
         "n");
@@ -191,30 +193,32 @@ public class TransactionalBulkCommandsTest {
   public void storeMovingNodeUnderItsDescendantIsRejectedAndNothingChanges() {
     // c1 would be contained in its own child g1
     assertRejectedAndUnchanged(
-        "TreeCycle", () -> store(node("g1", "c1", "c1"), node("c1", "g1", "g1")));
+        BulkMessageKind.TREE_CYCLE, () -> store(node("g1", "c1", "c1"), node("c1", "g1", "g1")));
   }
 
   @Test
   public void storeMovingNodeUnderItsDescendantSendingOnlyTheNewParentIsRejected() {
-    assertRejectedAndUnchanged("TreeCycle", () -> store(node("g1", "c1", "c1")));
+    assertRejectedAndUnchanged(BulkMessageKind.TREE_CYCLE, () -> store(node("g1", "c1", "c1")));
   }
 
   @Test
   public void storeOfNodeContainingItselfIsRejectedAndNothingChanges() {
-    assertRejectedAndUnchanged("TreeCycle", () -> store(node("c2", "p1", "c2")), "nodeId", "c2");
+    assertRejectedAndUnchanged(
+        BulkMessageKind.TREE_CYCLE, () -> store(node("c2", "p1", "c2")), "nodeId", "c2");
   }
 
   @Test
   public void storeOfDetachedLoopIsRejectedAndNothingChanges() {
     // x and y contain each other, and are not connected to any partition
-    assertRejectedAndUnchanged("TreeCycle", () -> store(node("x", "y", "y"), node("y", "x", "x")));
+    assertRejectedAndUnchanged(
+        BulkMessageKind.TREE_CYCLE, () -> store(node("x", "y", "y"), node("y", "x", "x")));
   }
 
   @Test
   public void storeWhereParentDoesNotListTheChildIsRejectedAndNothingChanges() {
     // n declares c2 as parent, but c2 (sent too) does not contain it
     assertRejectedAndUnchanged(
-        "ParentMismatch",
+        BulkMessageKind.PARENT_MISMATCH,
         () -> store(node("c2", "p1"), node("n", "c2")),
         "nodeId",
         "n",
@@ -226,20 +230,21 @@ public class TransactionalBulkCommandsTest {
   public void storeWhereStoredParentDoesNotListTheChildIsRejectedAndNothingChanges() {
     // c2 is not sent, and it does not contain n
     assertRejectedAndUnchanged(
-        "ParentMismatch", () -> store(node("d1", "p2", "ok"), node("ok", "d1"), node("n", "c2")));
+        BulkMessageKind.PARENT_MISMATCH,
+        () -> store(node("d1", "p2", "ok"), node("ok", "d1"), node("n", "c2")));
   }
 
   @Test
   public void storeWhereChildDeclaresDifferentParentIsRejectedAndNothingChanges() {
     // c2 lists g1 as child, but g1 says that its parent is d1
     assertRejectedAndUnchanged(
-        "ParentMismatch", () -> store(node("c2", "p1", "g1"), node("g1", "d1")));
+        BulkMessageKind.PARENT_MISMATCH, () -> store(node("c2", "p1", "g1"), node("g1", "d1")));
   }
 
   @Test
   public void storeOfPartitionWithParentIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "PartitionHasParent",
+        BulkMessageKind.PARTITION_HAS_PARENT,
         () -> store(node("c2", "p1", "n"), node("n", "c2"), node("p2", "c2", "d1")),
         "nodeId",
         "p2");
@@ -248,7 +253,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void storeMovingPartitionUnderANodeIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "PartitionHasParent",
+        BulkMessageKind.PARTITION_HAS_PARENT,
         () -> store(node("c2", "p1", "p2")),
         "nodeId",
         "p2",
@@ -258,7 +263,7 @@ public class TransactionalBulkCommandsTest {
 
   @Test
   public void storeOfNullChunkIsRejectedAndNothingChanges() {
-    assertRejectedAndUnchanged("NullChunk", () -> server.store(REPO, null));
+    assertRejectedAndUnchanged(BulkMessageKind.NULL_CHUNK, () -> server.store(REPO, null));
   }
 
   @Test
@@ -308,7 +313,7 @@ public class TransactionalBulkCommandsTest {
   public void createPartitionsWithExistingPartitionIsRejectedAndNothingChanges() {
     // p3 is new, p2 exists
     assertRejectedAndUnchanged(
-        "PartitionAlreadyExists",
+        BulkMessageKind.PARTITION_ALREADY_EXISTS,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null), node("p2", null))),
@@ -319,7 +324,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void createPartitionsWithExistingNonPartitionNodeIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "PartitionAlreadyExists",
+        BulkMessageKind.PARTITION_ALREADY_EXISTS,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null), node("c1", null))),
@@ -330,7 +335,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void createPartitionsWithParentIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "PartitionHasParent",
+        BulkMessageKind.PARTITION_HAS_PARENT,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null), node("p4", "c1"))),
@@ -341,7 +346,7 @@ public class TransactionalBulkCommandsTest {
   @Test
   public void createPartitionsRepeatedTwiceInTheSameRequestIsRejectedAndNothingChanges() {
     assertRejectedAndUnchanged(
-        "DuplicateNodeId",
+        BulkMessageKind.DUPLICATE_NODE_ID,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null), node("p3", null))));
@@ -351,7 +356,7 @@ public class TransactionalBulkCommandsTest {
   public void createPartitionsWithInvalidTreeIsRejectedAndNothingChanges() {
     // p3 is fine, p4 contains an unknown node
     assertRejectedAndUnchanged(
-        "ParentMissing",
+        BulkMessageKind.PARENT_MISSING,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null), node("p4", null, "unknown"))),
@@ -363,7 +368,7 @@ public class TransactionalBulkCommandsTest {
   public void createPartitionsWithNodeMovedFromExistingTreeIsRejectedAndNothingChanges() {
     // g1 exists already: creating partitions cannot move nodes
     assertRejectedAndUnchanged(
-        "NodeAlreadyExists",
+        BulkMessageKind.NODE_ALREADY_EXISTS,
         () ->
             server.createPartitionFromChunk(
                 REPO, Arrays.asList(node("p3", null, "n"), node("n", "p3", "g1"))),
@@ -394,7 +399,7 @@ public class TransactionalBulkCommandsTest {
   public void deletePartitionsWithNonPartitionIsRejectedAndNothingChanges() {
     // p1 is a valid partition and comes first, c1 is not a partition
     assertRejectedAndUnchanged(
-        "NodeIsNotPartition",
+        BulkMessageKind.NODE_IS_NOT_PARTITION,
         () -> server.deletePartitions(REPO, Arrays.asList("p1", "c1")),
         "nodeId",
         "c1",
@@ -443,7 +448,7 @@ public class TransactionalBulkCommandsTest {
     BulkCommandException e =
         assertThrows(
             BulkCommandException.class, () -> server.retrieve(REPO, List.of("c2", "unknown"), 0));
-    assertEquals("IdNotFound", e.getKind());
+    assertEquals(BulkMessageKind.ID_NOT_FOUND, e.getKind());
     assertEquals("unknown", e.getData().get("nodeId"));
   }
 
@@ -451,7 +456,7 @@ public class TransactionalBulkCommandsTest {
   public void retrieveWithNegativeDepthLimitIsRejected() {
     BulkCommandException e =
         assertThrows(BulkCommandException.class, () -> server.retrieve(REPO, List.of("p1"), -1));
-    assertEquals("DepthLimitIncorrect", e.getKind());
+    assertEquals(BulkMessageKind.DEPTH_LIMIT_INCORRECT, e.getKind());
     assertEquals("-1", e.getData().get("depthLimit"));
   }
 

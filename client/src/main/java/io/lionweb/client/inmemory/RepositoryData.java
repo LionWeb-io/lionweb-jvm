@@ -344,7 +344,7 @@ class RepositoryData {
       }
       if (!partitions.contains(id)) {
         throw BulkCommandException.of(
-            "NodeIsNotPartition",
+            BulkMessageKind.NODE_IS_NOT_PARTITION,
             "Node " + id + " is not a partition",
             "nodeId",
             id,
@@ -375,18 +375,18 @@ class RepositoryData {
   }
 
   private static BulkCommandException parentMissing(String nodeId, String message) {
-    return BulkCommandException.of("ParentMissing", message, "nodeId", nodeId);
+    return BulkCommandException.of(BulkMessageKind.PARENT_MISSING, message, "nodeId", nodeId);
   }
 
   private StorePlan plan(List<SerializedClassifierInstance> nodes, boolean creatingPartitions) {
     if (nodes == null) {
-      throw BulkCommandException.of("NullChunk", "Chunk missing");
+      throw BulkCommandException.of(BulkMessageKind.NULL_CHUNK, "Chunk missing");
     }
     StorePlan plan = new StorePlan();
     for (SerializedClassifierInstance n : nodes) {
       if (plan.requested.put(n.getID(), n) != null) {
         throw BulkCommandException.of(
-            "DuplicateNodeId",
+            BulkMessageKind.DUPLICATE_NODE_ID,
             "Node " + n.getID() + " is sent more than once",
             "nodeId",
             n.getID());
@@ -399,20 +399,26 @@ class RepositoryData {
         if (n.getParentNodeID() == null) {
           if (nodesByID.containsKey(id) || partitions.contains(id)) {
             throw BulkCommandException.of(
-                "PartitionAlreadyExists", "Partition " + id + " already exists", "nodeId", id);
+                BulkMessageKind.PARTITION_ALREADY_EXISTS,
+                "Partition " + id + " already exists",
+                "nodeId",
+                id);
           }
           plan.newPartitions.add(id);
         } else {
           if (!plan.requested.containsKey(n.getParentNodeID())) {
             throw BulkCommandException.of(
-                "PartitionHasParent",
+                BulkMessageKind.PARTITION_HAS_PARENT,
                 "Partition " + id + " has parent " + n.getParentNodeID(),
                 "nodeId",
                 id);
           }
           if (nodesByID.containsKey(id)) {
             throw BulkCommandException.of(
-                "NodeAlreadyExists", "Node " + id + " already exists", "nodeId", id);
+                BulkMessageKind.NODE_ALREADY_EXISTS,
+                "Node " + id + " already exists",
+                "nodeId",
+                id);
           }
         }
       }
@@ -433,12 +439,12 @@ class RepositoryData {
         String previous = claimedBy.put(id, n.getID());
         if (id.equals(n.getID())) {
           throw BulkCommandException.of(
-              "TreeCycle", "Node " + id + " contains itself", "nodeId", id);
+              BulkMessageKind.TREE_CYCLE, "Node " + id + " contains itself", "nodeId", id);
         }
         if (previous != null) {
           if (previous.equals(n.getID())) {
             throw BulkCommandException.of(
-                "NodeListedMoreThanOnce",
+                BulkMessageKind.NODE_LISTED_MORE_THAN_ONCE,
                 "Node " + id + " is contained more than once in " + n.getID(),
                 "nodeId",
                 id,
@@ -446,7 +452,7 @@ class RepositoryData {
                 n.getID());
           }
           throw BulkCommandException.of(
-              "NodeHasMultipleParents",
+              BulkMessageKind.NODE_HAS_MULTIPLE_PARENTS,
               "Node " + id + " is contained in both " + previous + " and " + n.getID(),
               "nodeId",
               id,
@@ -474,7 +480,7 @@ class RepositoryData {
       }
       if (partitions.contains(id)) {
         throw BulkCommandException.of(
-            "PartitionHasParent",
+            BulkMessageKind.PARTITION_HAS_PARENT,
             "Partition " + id + " has parent " + parent,
             "nodeId",
             id,
@@ -501,14 +507,14 @@ class RepositoryData {
       }
       if (creatingPartitions) {
         throw BulkCommandException.of(
-            "NodeAlreadyExists",
+            BulkMessageKind.NODE_ALREADY_EXISTS,
             "Node " + id + " already exists and cannot be moved while creating partitions",
             "nodeId",
             id);
       }
       if (partitions.contains(id)) {
         throw BulkCommandException.of(
-            "PartitionHasParent",
+            BulkMessageKind.PARTITION_HAS_PARENT,
             "Partition " + id + " cannot be contained in " + claim.getValue(),
             "nodeId",
             id,
@@ -561,7 +567,10 @@ class RepositoryData {
       while (!verified.contains(current)) {
         if (!path.add(current)) {
           throw BulkCommandException.of(
-              "TreeCycle", "Node " + start + " would be among its own ancestors", "nodeId", start);
+              BulkMessageKind.TREE_CYCLE,
+              "Node " + start + " would be among its own ancestors",
+              "nodeId",
+              start);
         }
         if (plan.removed.contains(current)) {
           throw parentMissing(start, "Node " + start + " is placed under a deleted node");
@@ -594,7 +603,7 @@ class RepositoryData {
       boolean isPartition, String id, String container, String parent) {
     if (isPartition) {
       return BulkCommandException.of(
-          "PartitionHasParent",
+          BulkMessageKind.PARTITION_HAS_PARENT,
           "Partition " + id + " cannot be contained in " + container,
           "nodeId",
           id,
@@ -602,7 +611,7 @@ class RepositoryData {
           container);
     }
     return BulkCommandException.of(
-        "ParentMismatch",
+        BulkMessageKind.PARENT_MISMATCH,
         "Node "
             + id
             + " has parent "
@@ -647,7 +656,7 @@ class RepositoryData {
   RetrieveResult retrieveReportingUnknown(List<String> ids, int depthLimit) {
     if (depthLimit < 0) {
       throw BulkCommandException.of(
-          "DepthLimitIncorrect",
+          BulkMessageKind.DEPTH_LIMIT_INCORRECT,
           "The depth limit must be >= 0, but it is " + depthLimit,
           "depthLimit",
           String.valueOf(depthLimit));

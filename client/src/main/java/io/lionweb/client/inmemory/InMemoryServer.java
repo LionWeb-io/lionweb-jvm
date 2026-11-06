@@ -171,7 +171,7 @@ public class InMemoryServer {
     if (!result.getUnknownIds().isEmpty()) {
       String id = result.getUnknownIds().get(0);
       throw BulkCommandException.of(
-          "IdNotFound", "Node with id " + id + " cannot be found", "nodeId", id);
+          BulkMessageKind.ID_NOT_FOUND, "Node with id " + id + " cannot be found", "nodeId", id);
     }
     return result.getNodes();
   }

@@ -13,6 +13,7 @@ import io.lionweb.client.api.HistorySupport
 import io.lionweb.client.api.RepositoryConfiguration
 import io.lionweb.client.api.RepositoryVersionToken
 import io.lionweb.client.inmemory.BulkCommandException
+import io.lionweb.client.inmemory.BulkMessageKind
 import io.lionweb.client.inmemory.InMemoryServer
 import io.lionweb.serialization.LowLevelJsonSerialization
 import io.lionweb.serialization.data.SerializationChunk
@@ -147,7 +148,7 @@ class HTTPBulkServer(
                 } ?: emptyList()
             } catch (e: RuntimeException) {
                 throw BulkCommandException(
-                    "IdsIncorrect",
+                    BulkMessageKind.IDS_INCORRECT,
                     "The ids parameter must be a list of strings",
                     mapOf("nodeIds" to (idsObject.get("ids")?.toString() ?: "null")),
                 )
@@ -156,7 +157,7 @@ class HTTPBulkServer(
             // Validate the repository name and the depth limit even if there is nothing to retrieve
             inMemoryServer.getRepositoryConfiguration(repository)
             val response = chunkResponse(repository, emptyList())
-            response.getAsJsonArray("messages").add(message("EmptyIdList", "Empty id list", emptyMap()))
+            response.getAsJsonArray("messages").add(message(BulkMessageKind.EMPTY_ID_LIST.kindName, "Empty id list", emptyMap()))
             exchange.sendJson(HttpURLConnection.HTTP_OK, response)
             return
         }
@@ -166,7 +167,15 @@ class HTTPBulkServer(
             }
         val response = chunkResponse(repository, result.nodes)
         result.unknownIds.forEach {
-            response.getAsJsonArray("messages").add(message("IdNotFound", "Node with id $it does not exist", mapOf("nodeId" to it)))
+            response.getAsJsonArray("messages").add(
+                message(
+                    BulkMessageKind.ID_NOT_FOUND.kindName,
+                    "Node with id $it does not exist",
+                    mapOf(
+                        "nodeId" to it,
+                    ),
+                ),
+            )
         }
         exchange.sendJson(HttpURLConnection.HTTP_OK, response)
     }
@@ -254,7 +263,7 @@ class HTTPBulkServer(
         try {
             handler()
         } catch (e: BulkCommandException) {
-            sendJson(HttpURLConnection.HTTP_BAD_REQUEST, failure(e.kind, e.message ?: e.kind, e.data))
+            sendJson(HttpURLConnection.HTTP_BAD_REQUEST, failure(e.kind.kindName, e.message ?: e.kind.kindName, e.data))
         } catch (e: IllegalArgumentException) {
             sendJson(HttpURLConnection.HTTP_BAD_REQUEST, failure(e.message ?: e.javaClass.name))
         }
@@ -269,7 +278,7 @@ class HTTPBulkServer(
         val number = value.toBigIntegerOrNull()
         if (number == null || number.signum() < 0) {
             throw BulkCommandException(
-                "DepthLimitIncorrect",
+                BulkMessageKind.DEPTH_LIMIT_INCORRECT,
                 "The depth limit must be an integer >= 0, but it is '$value'",
                 mapOf("depthLimit" to value),
             )
