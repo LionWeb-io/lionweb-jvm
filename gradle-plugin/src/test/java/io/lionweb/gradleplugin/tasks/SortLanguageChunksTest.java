@@ -31,7 +31,9 @@ public class SortLanguageChunksTest {
 
   @Test
   public void stillRejectsUnknownDependencies() {
-    SerializationChunk library = loadChunk("/comments.language.v1.json");
+    // Same as notes.language.json, with an additional dependency on a language that is not
+    // available
+    SerializationChunk library = loadChunk("/unknown-dependency.language.json");
 
     IllegalStateException e =
         assertThrows(
@@ -39,7 +41,7 @@ public class SortLanguageChunksTest {
             () ->
                 AbstractGenerationTask.sortLanguageChunks(
                     LionWebVersion.v2023_1, List.of(library)));
-    assertTrue(e.getMessage().contains("com-strumenta-StarLasu"), e.getMessage());
+    assertTrue(e.getMessage().contains("missing-language"), e.getMessage());
   }
 
   private SerializationChunk loadChunk(String resource) {

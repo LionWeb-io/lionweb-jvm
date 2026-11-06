@@ -2,13 +2,15 @@ package io.lionweb.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.lionweb.LionWebVersion;
 import io.lionweb.language.Language;
 import io.lionweb.language.LionCoreBuiltins;
 import io.lionweb.lioncore.LionCore;
-import java.util.Arrays;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 public class ImplicitDependenciesTest {
@@ -17,9 +19,27 @@ public class ImplicitDependenciesTest {
   public void implicitDependenciesAreLionCoreAndBuiltins() {
     for (LionWebVersion version : LionWebVersion.values()) {
       assertEquals(
-          Arrays.asList(LionCore.getInstance(version), LionCoreBuiltins.getInstance(version)),
+          Set.of(LionCore.getInstance(version), LionCoreBuiltins.getInstance(version)),
           ImplicitDependencies.implicitDependencies(version));
     }
+  }
+
+  @Test
+  public void implicitDependenciesAreCached() {
+    for (LionWebVersion version : LionWebVersion.values()) {
+      assertSame(
+          ImplicitDependencies.implicitDependencies(version),
+          ImplicitDependencies.implicitDependencies(version));
+    }
+  }
+
+  @Test
+  public void implicitDependenciesCannotBeModified() {
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            ImplicitDependencies.implicitDependencies(LionWebVersion.v2023_1)
+                .add(new Language("MyLanguage", "my-language", "my-language", "1")));
   }
 
   @Test
