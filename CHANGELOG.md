@@ -12,8 +12,11 @@ Reading serialized values is now stricter, following the 2024.1 specification. C
 Other changes:
 
 * Gradle plugin: `generateLWLanguages` and `generateLWNodeClasses` no longer fail with `Unknown dependency` on languages that declare a dependency on LionCore M3 or LionCore builtins (issue #522)
+* Add `io.lionweb.utils.ImplicitDependencies`, exposing the languages every language implicitly depends on (LionCore M3 and LionCore builtins) for a LionWeb version. `LanguageValidator` and the Gradle plugin now use it (issue #522)
+* Add `TESTING.md`, describing the kinds of tests and how to run them, and fix the README and CONTRIBUTING files (Java versions, links)
 * CI: run integration tests and javadoc within the build jobs, build the server Docker image once per functional test job, cancel superseded runs and test on Java 17 and 25 only
 * Fix build warnings: use the `io.github.ben-manes.versions` plugin id and link javadoc to the Java 11 API
+* Bump dependencies: gson 2.15.0, protobuf 4.36.2, guava 33.7.2, okhttp 5.5.1, json-schema-validator 3.0.8, EMF (common 2.46.0, ecore 2.43.0, xmi 2.41.0), javapoet 0.22.0, kotest 6.2.6, Gradle 9.8.2, `gradle/actions` 6.4.1 and several Gradle plugins
 
 ### Version 1.4.7
 
