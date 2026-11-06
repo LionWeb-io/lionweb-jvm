@@ -34,7 +34,7 @@ import org.jetbrains.annotations.Nullable;
  */
 class RepositoryData {
   @NotNull RepositoryConfiguration configuration;
-  final List<String> partitionIDs = new ArrayList<>();
+  final Set<String> partitionIDs = new LinkedHashSet<>();
   final Map<String, SerializedClassifierInstance> nodesByID = new ConcurrentHashMap<>();
 
   /** Pre-computed index: ClassifierKey → list of node IDs. Kept in sync with nodesByID. */
@@ -334,7 +334,7 @@ class RepositoryData {
    * BulkCommandException} is thrown, and nothing is changed.
    */
   void deletePartitionsTransactional(List<String> ids) {
-    Set<String> partitions = new HashSet<>(partitionIDs);
+    Set<String> partitions = partitionIDs;
     Set<String> toDelete = new LinkedHashSet<>();
     Deque<String> pending = new ArrayDeque<>();
     for (String id : new LinkedHashSet<>(ids)) {
@@ -362,8 +362,7 @@ class RepositoryData {
       pending.addAll(node.getChildren());
       pending.addAll(node.getAnnotations());
     }
-    Set<String> deletedPartitions = new HashSet<>(toDelete);
-    partitionIDs.removeIf(deletedPartitions::contains);
+    partitionIDs.removeAll(toDelete);
     toDelete.forEach(this::removeFromIndexAndNodes);
   }
 
@@ -392,12 +391,14 @@ class RepositoryData {
             n.getID());
       }
     }
-    Set<String> partitions = new HashSet<>(partitionIDs);
+    Set<String> newPartitions = plan.newPartitions;
+    java.util.function.Predicate<String> partitions =
+        id -> partitionIDs.contains(id) || newPartitions.contains(id);
     if (creatingPartitions) {
       for (SerializedClassifierInstance n : nodes) {
         String id = n.getID();
         if (n.getParentNodeID() == null) {
-          if (nodesByID.containsKey(id) || partitions.contains(id)) {
+          if (nodesByID.containsKey(id) || partitionIDs.contains(id)) {
             throw BulkCommandException.of(
                 BulkMessageKind.PARTITION_ALREADY_EXISTS,
                 "Partition " + id + " already exists",
@@ -422,7 +423,6 @@ class RepositoryData {
           }
         }
       }
-      partitions.addAll(plan.newPartitions);
     }
     Map<String, SerializedClassifierInstance> requested = plan.requested;
 
@@ -471,14 +471,14 @@ class RepositoryData {
       String claimant = claimedBy.get(id);
       if (parent == null) {
         if (claimant != null) {
-          throw partitionOrMismatch(partitions.contains(id), id, claimant, null);
+          throw partitionOrMismatch(partitions.test(id), id, claimant, null);
         }
-        if (!partitions.contains(id)) {
+        if (!partitions.test(id)) {
           throw parentMissing(id, "Node " + id + " has no parent and is not a partition");
         }
         continue;
       }
-      if (partitions.contains(id)) {
+      if (partitions.test(id)) {
         throw BulkCommandException.of(
             BulkMessageKind.PARTITION_HAS_PARENT,
             "Partition " + id + " has parent " + parent,
@@ -493,7 +493,7 @@ class RepositoryData {
       boolean parentListsIt =
           claimant != null
               ? claimant.equals(parent)
-              : !requested.containsKey(parent) && nodesByID.get(parent).contains(id);
+              : !requested.containsKey(parent) && isStoredChildOf(id, parent);
       if (!parentListsIt) {
         throw partitionOrMismatch(false, id, claimant, parent);
       }
@@ -512,7 +512,7 @@ class RepositoryData {
             "nodeId",
             id);
       }
-      if (partitions.contains(id)) {
+      if (partitions.test(id)) {
         throw BulkCommandException.of(
             BulkMessageKind.PARTITION_HAS_PARENT,
             "Partition " + id + " cannot be contained in " + claim.getValue(),
@@ -558,19 +558,28 @@ class RepositoryData {
     }
 
     // Every node must end up in a partition, without loops
-    Set<String> verified = new HashSet<>();
-    Set<String> toCheck = new LinkedHashSet<>(requested.keySet());
-    toCheck.addAll(plan.implicitlyMovedTo.keySet());
-    for (String start : toCheck) {
-      Set<String> path = new LinkedHashSet<>();
+    // walkOf: node -> index of the walk which visited it. A node visited by an earlier walk is
+    // verified (a failing walk throws); meeting a node of the current walk again is a cycle.
+    Map<String, Integer> walkOf = new HashMap<>();
+    int walk = 0;
+    for (Iterator<String> it =
+            new ConcatIterator(
+                requested.keySet().iterator(), plan.implicitlyMovedTo.keySet().iterator());
+        it.hasNext(); ) {
+      String start = it.next();
+      Integer walkIndex = ++walk;
       String current = start;
-      while (!verified.contains(current)) {
-        if (!path.add(current)) {
-          throw BulkCommandException.of(
-              BulkMessageKind.TREE_CYCLE,
-              "Node " + start + " would be among its own ancestors",
-              "nodeId",
-              start);
+      while (true) {
+        Integer previous = walkOf.putIfAbsent(current, walkIndex);
+        if (previous != null) {
+          if (previous.equals(walkIndex)) {
+            throw BulkCommandException.of(
+                BulkMessageKind.TREE_CYCLE,
+                "Node " + start + " would be among its own ancestors",
+                "nodeId",
+                start);
+          }
+          break;
         }
         if (plan.removed.contains(current)) {
           throw parentMissing(start, "Node " + start + " is placed under a deleted node");
@@ -584,7 +593,7 @@ class RepositoryData {
           parent = nodesByID.get(current).getParentNodeID();
         }
         if (parent == null) {
-          if (!partitions.contains(current)) {
+          if (!partitions.test(current)) {
             throw parentMissing(current, "Node " + current + " is not contained in a partition");
           }
           break;
@@ -594,9 +603,41 @@ class RepositoryData {
         }
         current = parent;
       }
-      verified.addAll(path);
     }
     return plan;
+  }
+
+  private static final class ConcatIterator implements Iterator<String> {
+    private final Iterator<String> first;
+    private final Iterator<String> second;
+
+    ConcatIterator(Iterator<String> first, Iterator<String> second) {
+      this.first = first;
+      this.second = second;
+    }
+
+    @Override
+    public boolean hasNext() {
+      return first.hasNext() || second.hasNext();
+    }
+
+    @Override
+    public String next() {
+      return first.hasNext() ? first.next() : second.next();
+    }
+  }
+
+  /**
+   * Whether the stored node {@code parent} contains {@code id}. As the repository keeps parent
+   * pointers and containments in sync, a stored node pointing to {@code parent} is contained by it,
+   * and the children of the parent do not need to be scanned.
+   */
+  private boolean isStoredChildOf(String id, String parent) {
+    SerializedClassifierInstance stored = nodesByID.get(id);
+    if (stored != null && parent.equals(stored.getParentNodeID())) {
+      return true;
+    }
+    return nodesByID.get(parent).contains(id);
   }
 
   private static BulkCommandException partitionOrMismatch(
