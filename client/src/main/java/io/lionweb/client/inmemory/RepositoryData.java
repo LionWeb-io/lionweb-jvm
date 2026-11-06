@@ -11,6 +11,8 @@ import io.lionweb.utils.IdUtils;
 import io.lionweb.utils.ValidationResult;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,6 +26,11 @@ import org.jetbrains.annotations.Nullable;
  * updates perform multi-step, non-atomic operations across several data structures. Callers must
  * externally serialize all mutations. The {@code ConcurrentHashMap} for {@code nodesByID} should
  * not be mistaken for a broader thread-safety guarantee.
+ *
+ * <p>The transactional bulk commands ({@link #storeTransactional}, {@link
+ * #createPartitionsTransactional}, {@link #deletePartitionsTransactional}, {@link
+ * #retrieveReportingUnknown}) are meant to be called while holding {@link #lock} (write lock for
+ * the first three, read lock for the last), as {@link InMemoryServer} does.
  */
 class RepositoryData {
   @NotNull RepositoryConfiguration configuration;
@@ -275,6 +282,386 @@ class RepositoryData {
               }
             });
     new ChangeCalculator().store(newNodes);
+  }
+
+  //
+  // Transactional commands of the bulk API.
+  //
+  // Each command first validates the whole request against the current content, without touching
+  // it, and builds a plan of what has to change. Only when the request is valid the plan is
+  // applied, and applying it cannot fail. A rejected command thus leaves nodes, partitions and
+  // indexes exactly as they were.
+  //
+
+  /** Read-write lock used by {@link InMemoryServer} to serialize the bulk commands. */
+  final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+  private static final class StorePlan {
+    final Map<String, SerializedClassifierInstance> requested = new LinkedHashMap<>();
+    final Set<String> newPartitions = new LinkedHashSet<>();
+
+    /** Nodes not in the request which are moved under a node in the request. */
+    final Map<String, String> implicitlyMovedTo = new LinkedHashMap<>();
+
+    /** Nodes not in the request which stop being contained by their old parent. */
+    final List<String[]> implicitlyRemovedFrom = new ArrayList<>();
+
+    /** Nodes to delete, including descendants. */
+    final Set<String> removed = new LinkedHashSet<>();
+  }
+
+  /**
+   * Stores the nodes, as the {@code store} command of the bulk API does. If the request would lead
+   * to a malformed tree a {@link BulkCommandException} is thrown, and nothing is changed.
+   */
+  void storeTransactional(List<SerializedClassifierInstance> nodes) {
+    apply(plan(nodes, false));
+  }
+
+  /**
+   * Creates new partitions, as the {@code createPartitions} command of the bulk API does. Nodes
+   * without parent are the new partitions. For backward compatibility the request may also contain
+   * their (new) descendants. If the request is invalid a {@link BulkCommandException} is thrown,
+   * and nothing is changed.
+   */
+  void createPartitionsTransactional(List<SerializedClassifierInstance> nodes) {
+    apply(plan(nodes, true));
+  }
+
+  /**
+   * Deletes partitions with all their contents, as the {@code deletePartitions} command of the bulk
+   * API does. Unknown ids are ignored. If any of the ids is not the id of a partition a {@link
+   * BulkCommandException} is thrown, and nothing is changed.
+   */
+  void deletePartitionsTransactional(List<String> ids) {
+    Set<String> partitions = new HashSet<>(partitionIDs);
+    Set<String> toDelete = new LinkedHashSet<>();
+    Deque<String> pending = new ArrayDeque<>();
+    for (String id : new LinkedHashSet<>(ids)) {
+      SerializedClassifierInstance node = nodesByID.get(id);
+      if (node == null) {
+        continue;
+      }
+      if (!partitions.contains(id)) {
+        throw BulkCommandException.of(
+            "NodeIsNotPartition",
+            "Node " + id + " is not a partition",
+            "nodeId",
+            id,
+            "parentNodeId",
+            String.valueOf(node.getParentNodeID()));
+      }
+      pending.add(id);
+    }
+    while (!pending.isEmpty()) {
+      String id = pending.poll();
+      SerializedClassifierInstance node = nodesByID.get(id);
+      if (node == null || !toDelete.add(id)) {
+        continue;
+      }
+      pending.addAll(node.getChildren());
+      pending.addAll(node.getAnnotations());
+    }
+    Set<String> deletedPartitions = new HashSet<>(toDelete);
+    partitionIDs.removeIf(deletedPartitions::contains);
+    toDelete.forEach(this::removeFromIndexAndNodes);
+  }
+
+  private void removeFromIndexAndNodes(String id) {
+    SerializedClassifierInstance node = nodesByID.remove(id);
+    if (node != null) {
+      indexRemove(node);
+    }
+  }
+
+  private static BulkCommandException parentMissing(String nodeId, String message) {
+    return BulkCommandException.of("ParentMissing", message, "nodeId", nodeId);
+  }
+
+  private StorePlan plan(List<SerializedClassifierInstance> nodes, boolean creatingPartitions) {
+    if (nodes == null) {
+      throw BulkCommandException.of("NullChunk", "Chunk missing");
+    }
+    StorePlan plan = new StorePlan();
+    for (SerializedClassifierInstance n : nodes) {
+      if (plan.requested.put(n.getID(), n) != null) {
+        throw BulkCommandException.of(
+            "DuplicateNodeId",
+            "Node " + n.getID() + " is sent more than once",
+            "nodeId",
+            n.getID());
+      }
+    }
+    Set<String> partitions = new HashSet<>(partitionIDs);
+    if (creatingPartitions) {
+      for (SerializedClassifierInstance n : nodes) {
+        String id = n.getID();
+        if (n.getParentNodeID() == null) {
+          if (nodesByID.containsKey(id) || partitions.contains(id)) {
+            throw BulkCommandException.of(
+                "PartitionAlreadyExists", "Partition " + id + " already exists", "nodeId", id);
+          }
+          plan.newPartitions.add(id);
+        } else {
+          if (!plan.requested.containsKey(n.getParentNodeID())) {
+            throw BulkCommandException.of(
+                "PartitionHasParent",
+                "Partition " + id + " has parent " + n.getParentNodeID(),
+                "nodeId",
+                id);
+          }
+          if (nodesByID.containsKey(id)) {
+            throw BulkCommandException.of(
+                "NodeAlreadyExists", "Node " + id + " already exists", "nodeId", id);
+          }
+        }
+      }
+      partitions.addAll(plan.newPartitions);
+    }
+    Map<String, SerializedClassifierInstance> requested = plan.requested;
+
+    // Who contains what, according to the nodes in the request
+    Map<String, String> claimedBy = new HashMap<>();
+    for (SerializedClassifierInstance n : requested.values()) {
+      List<String> contained = new ArrayList<>(n.getChildren());
+      contained.addAll(n.getAnnotations());
+      for (String id : contained) {
+        if (!requested.containsKey(id) && !nodesByID.containsKey(id)) {
+          throw parentMissing(
+              id, "Node " + id + ", contained in " + n.getID() + ", is unknown (ParentMissing)");
+        }
+        String previous = claimedBy.put(id, n.getID());
+        if (id.equals(n.getID())) {
+          throw BulkCommandException.of(
+              "TreeCycle", "Node " + id + " contains itself", "nodeId", id);
+        }
+        if (previous != null) {
+          if (previous.equals(n.getID())) {
+            throw BulkCommandException.of(
+                "NodeListedMoreThanOnce",
+                "Node " + id + " is contained more than once in " + n.getID(),
+                "nodeId",
+                id,
+                "parentNodeId",
+                n.getID());
+          }
+          throw BulkCommandException.of(
+              "NodeHasMultipleParents",
+              "Node " + id + " is contained in both " + previous + " and " + n.getID(),
+              "nodeId",
+              id,
+              "parentNodeId",
+              previous,
+              "otherParentNodeId",
+              n.getID());
+        }
+      }
+    }
+
+    // Parents of the nodes in the request: they must exist and agree with the containers
+    for (SerializedClassifierInstance n : requested.values()) {
+      String id = n.getID();
+      String parent = n.getParentNodeID();
+      String claimant = claimedBy.get(id);
+      if (parent == null) {
+        if (claimant != null) {
+          throw partitionOrMismatch(partitions.contains(id), id, claimant, null);
+        }
+        if (!partitions.contains(id)) {
+          throw parentMissing(id, "Node " + id + " has no parent and is not a partition");
+        }
+        continue;
+      }
+      if (partitions.contains(id)) {
+        throw BulkCommandException.of(
+            "PartitionHasParent",
+            "Partition " + id + " has parent " + parent,
+            "nodeId",
+            id,
+            "parentNodeId",
+            parent);
+      }
+      if (!requested.containsKey(parent) && !nodesByID.containsKey(parent)) {
+        throw parentMissing(id, "Parent " + parent + " of node " + id + " is unknown");
+      }
+      boolean parentListsIt =
+          claimant != null
+              ? claimant.equals(parent)
+              : !requested.containsKey(parent) && nodesByID.get(parent).contains(id);
+      if (!parentListsIt) {
+        throw partitionOrMismatch(false, id, claimant, parent);
+      }
+    }
+
+    // Nodes contained by nodes in the request, without being in the request, change parent
+    for (Map.Entry<String, String> claim : claimedBy.entrySet()) {
+      String id = claim.getKey();
+      if (requested.containsKey(id)) {
+        continue;
+      }
+      if (creatingPartitions) {
+        throw BulkCommandException.of(
+            "NodeAlreadyExists",
+            "Node " + id + " already exists and cannot be moved while creating partitions",
+            "nodeId",
+            id);
+      }
+      if (partitions.contains(id)) {
+        throw BulkCommandException.of(
+            "PartitionHasParent",
+            "Partition " + id + " cannot be contained in " + claim.getValue(),
+            "nodeId",
+            id,
+            "parentNodeId",
+            claim.getValue());
+      }
+      plan.implicitlyMovedTo.put(id, claim.getValue());
+      String oldParent = nodesByID.get(id).getParentNodeID();
+      if (oldParent != null && !oldParent.equals(claim.getValue())) {
+        if (!requested.containsKey(oldParent) && nodesByID.containsKey(oldParent)) {
+          plan.implicitlyRemovedFrom.add(new String[] {oldParent, id});
+        }
+      }
+    }
+
+    // Nodes dropped by a node in the request are deleted, unless they are moved elsewhere
+    Deque<String> pending = new ArrayDeque<>();
+    for (SerializedClassifierInstance n : requested.values()) {
+      SerializedClassifierInstance current = nodesByID.get(n.getID());
+      if (current == null) {
+        continue;
+      }
+      Set<String> kept = new HashSet<>(n.getChildren());
+      kept.addAll(n.getAnnotations());
+      List<String> before = new ArrayList<>(current.getChildren());
+      before.addAll(current.getAnnotations());
+      for (String id : before) {
+        if (!kept.contains(id) && !claimedBy.containsKey(id)) {
+          pending.add(id);
+        }
+      }
+    }
+    while (!pending.isEmpty()) {
+      String id = pending.poll();
+      SerializedClassifierInstance node = nodesByID.get(id);
+      if (node == null || claimedBy.containsKey(id) || !plan.removed.add(id)) {
+        continue;
+      }
+      pending.addAll(node.getChildren());
+      pending.addAll(node.getAnnotations());
+    }
+
+    // Every node must end up in a partition, without loops
+    Set<String> verified = new HashSet<>();
+    Set<String> toCheck = new LinkedHashSet<>(requested.keySet());
+    toCheck.addAll(plan.implicitlyMovedTo.keySet());
+    for (String start : toCheck) {
+      Set<String> path = new LinkedHashSet<>();
+      String current = start;
+      while (!verified.contains(current)) {
+        if (!path.add(current)) {
+          throw BulkCommandException.of(
+              "TreeCycle", "Node " + start + " would be among its own ancestors", "nodeId", start);
+        }
+        if (plan.removed.contains(current)) {
+          throw parentMissing(start, "Node " + start + " is placed under a deleted node");
+        }
+        String parent;
+        if (claimedBy.containsKey(current)) {
+          parent = claimedBy.get(current);
+        } else if (requested.containsKey(current)) {
+          parent = requested.get(current).getParentNodeID();
+        } else {
+          parent = nodesByID.get(current).getParentNodeID();
+        }
+        if (parent == null) {
+          if (!partitions.contains(current)) {
+            throw parentMissing(current, "Node " + current + " is not contained in a partition");
+          }
+          break;
+        }
+        if (!requested.containsKey(parent) && !nodesByID.containsKey(parent)) {
+          throw parentMissing(current, "Parent " + parent + " of node " + current + " is unknown");
+        }
+        current = parent;
+      }
+      verified.addAll(path);
+    }
+    return plan;
+  }
+
+  private static BulkCommandException partitionOrMismatch(
+      boolean isPartition, String id, String container, String parent) {
+    if (isPartition) {
+      return BulkCommandException.of(
+          "PartitionHasParent",
+          "Partition " + id + " cannot be contained in " + container,
+          "nodeId",
+          id,
+          "parentNodeId",
+          container);
+    }
+    return BulkCommandException.of(
+        "ParentMismatch",
+        "Node "
+            + id
+            + " has parent "
+            + parent
+            + " but it is contained in "
+            + container
+            + " (a parent must contain its children)",
+        "nodeId",
+        id,
+        "parentNodeId",
+        String.valueOf(parent),
+        "containerNodeId",
+        String.valueOf(container));
+  }
+
+  /** Applies a validated plan. This is not expected to fail. */
+  private void apply(StorePlan plan) {
+    for (SerializedClassifierInstance updatedNode : plan.requested.values()) {
+      SerializedClassifierInstance existing = nodesByID.get(updatedNode.getID());
+      if (existing == null) {
+        indexAdd(updatedNode);
+      } else if (!classifierKeyOf(existing).equals(classifierKeyOf(updatedNode))) {
+        indexRemove(existing);
+        indexAdd(updatedNode);
+      }
+    }
+    for (String[] oldParentAndChild : plan.implicitlyRemovedFrom) {
+      removeContainedNode(oldParentAndChild[0], oldParentAndChild[1]);
+    }
+    plan.implicitlyMovedTo.forEach((id, parent) -> nodesByID.get(id).setParentNodeID(parent));
+    nodesByID.putAll(plan.requested);
+    partitionIDs.addAll(plan.newPartitions);
+    plan.removed.forEach(this::removeFromIndexAndNodes);
+  }
+
+  /**
+   * Retrieves the nodes with the given ids, down to the given depth. Unknown ids are reported in
+   * the result instead of failing the command.
+   *
+   * @throws BulkCommandException if the depth limit is negative
+   */
+  RetrieveResult retrieveReportingUnknown(List<String> ids, int depthLimit) {
+    if (depthLimit < 0) {
+      throw BulkCommandException.of(
+          "DepthLimitIncorrect",
+          "The depth limit must be >= 0, but it is " + depthLimit,
+          "depthLimit",
+          String.valueOf(depthLimit));
+    }
+    List<SerializedClassifierInstance> nodes = new ArrayList<>();
+    List<String> unknown = new ArrayList<>();
+    for (String id : ids) {
+      if (nodesByID.containsKey(id)) {
+        retrieve(id, depthLimit, nodes);
+      } else {
+        unknown.add(id);
+      }
+    }
+    return new RetrieveResult(nodes, unknown);
   }
 
   List<SerializedClassifierInstance> retrieveTrees(List<String> ids) {
