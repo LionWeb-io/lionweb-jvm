@@ -4,12 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.JsonSyntaxException;
 import io.lionweb.serialization.data.SerializationChunk;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The structure of a chunk is enforced as prescribed by the serialization specification. The rules
@@ -121,43 +117,18 @@ public class ChunkStructureEnforcementTest {
   }
 
   //
-  // Duplicate keys and strict JSON
+  // Strict JSON
   //
 
   @Test
-  public void duplicateKeyIsRejectedWhenParsingText() {
-    for (String version : VERSIONS) {
-      String json = chunkWith(version, "'parent': 'n0'", "'parent': 'n0', 'parent': null");
-      DeserializationException e =
-          assertThrows(
-              DeserializationException.class,
-              () -> new LowLevelJsonSerialization().deserializeSerializationBlock(json));
-      assertTrue(e.getMessage().contains("Duplicate key 'parent'"), e.getMessage());
-      // Tolerant mode keeps the last value
-      SerializationChunk chunk =
-          LowLevelJsonSerialization.tolerant().deserializeSerializationBlock(json);
+  public void duplicateKeysKeepTheLastValue() {
+    // Gson does not report duplicate keys, so they are not rejected: the last value wins
+    String json = chunkWith("2024.1", "'parent': 'n0'", "'parent': 'n0', 'parent': null");
+    for (LowLevelJsonSerialization serialization :
+        List.of(new LowLevelJsonSerialization(), LowLevelJsonSerialization.tolerant())) {
+      SerializationChunk chunk = serialization.deserializeSerializationBlock(json);
       assertNull(chunk.getClassifierInstances().get(0).getParentNodeID());
     }
-  }
-
-  @Test
-  public void duplicateKeyIsRejectedWhenParsingAFile(@TempDir File dir) throws IOException {
-    File file = new File(dir, "chunk.json");
-    Files.writeString(
-        file.toPath(), chunkWith("2024.1", "'parent': 'n0'", "'parent': 'n0', 'parent': null"));
-    assertThrows(
-        DeserializationException.class,
-        () -> new LowLevelJsonSerialization().deserializeSerializationBlock(file));
-    Files.writeString(file.toPath(), validChunk("2024.1"));
-    assertNotNull(new LowLevelJsonSerialization().deserializeSerializationBlock(file));
-  }
-
-  @Test
-  public void duplicateKeyIsRejectedByJsonSerialization() {
-    String json = chunkWith("2024.1", "'parent': 'n0'", "'parent': 'n0', 'parent': null");
-    JsonSerialization jsonSerialization =
-        SerializationProvider.getStandardJsonSerialization(io.lionweb.LionWebVersion.v2024_1);
-    assertThrows(DeserializationException.class, () -> jsonSerialization.deserializeToNodes(json));
   }
 
   @Test

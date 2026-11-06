@@ -14,7 +14,7 @@ Reading serialized values is now stricter, following the 2024.1 specification. C
 * no unspecified members in nodes, properties, containments, references, reference targets and meta-pointers; the legacy `children` member of nodes is no longer accepted
 * ids (when present), language keys, feature keys and versions must be well-formed
 * `languages` must not contain duplicates and must list all the languages used by meta-pointers
-* when parsing text or files, duplicate keys and JSON which is not strictly RFC 8259 are rejected
+* when parsing text or files, JSON which is not strictly RFC 8259 is rejected
 * to load such chunks anyway, use `LowLevelJsonSerialization.tolerant()` or `JsonSerialization.setStrictChunkStructure(false)`
 
 Other changes:

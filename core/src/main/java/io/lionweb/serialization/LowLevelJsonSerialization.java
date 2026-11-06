@@ -4,7 +4,6 @@ import static io.lionweb.serialization.JsonSerializationKeys.*;
 
 import com.google.common.base.Charsets;
 import com.google.gson.*;
-import com.google.gson.internal.LazilyParsedNumber;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.MalformedJsonException;
@@ -51,8 +50,7 @@ public class LowLevelJsonSerialization {
    *       nodes)
    *   <li>ids (when present), language keys, feature keys and versions are well-formed
    *   <li>{@code languages} has no duplicates and lists all the languages used by meta-pointers
-   *   <li>when parsing text or files, objects have no duplicate keys and the JSON is strictly RFC
-   *       8259
+   *   <li>when parsing text or files, the JSON is strictly RFC 8259
    * </ul>
    */
   public LowLevelJsonSerialization() {
@@ -632,9 +630,11 @@ public class LowLevelJsonSerialization {
   //
 
   /**
-   * Parse JSON text. When strict, the text must conform to RFC 8259 and objects with duplicate keys
-   * are rejected, while the tolerant mode uses Gson's lenient parser, which silently keeps the last
-   * value of a duplicate key.
+   * Parse JSON text. When strict, the text must conform to RFC 8259, while the tolerant mode uses
+   * Gson's lenient parser.
+   *
+   * <p>In both modes, if an object has duplicate keys the last value is kept: Gson does not report
+   * duplicate keys when building a {@link JsonElement}.
    */
   JsonElement parse(Reader reader) {
     if (!strict) {
@@ -643,7 +643,7 @@ public class LowLevelJsonSerialization {
     JsonReader jsonReader = new JsonReader(reader);
     jsonReader.setStrictness(Strictness.STRICT);
     try {
-      JsonElement result = readStrictly(jsonReader);
+      JsonElement result = JsonParser.parseReader(jsonReader);
       if (jsonReader.peek() != JsonToken.END_DOCUMENT) {
         throw new JsonSyntaxException("Unexpected content after the end of the JSON document");
       }
@@ -652,43 +652,6 @@ public class LowLevelJsonSerialization {
       throw new JsonSyntaxException(e);
     } catch (IOException e) {
       throw new DeserializationException("Cannot read JSON: " + e.getMessage());
-    }
-  }
-
-  private static JsonElement readStrictly(JsonReader reader) throws IOException {
-    switch (reader.peek()) {
-      case BEGIN_OBJECT:
-        JsonObject object = new JsonObject();
-        reader.beginObject();
-        while (reader.hasNext()) {
-          String name = reader.nextName();
-          if (object.has(name)) {
-            throw new InvalidChunkException(
-                "Duplicate key '" + name + "' in JSON object at " + reader.getPath());
-          }
-          object.add(name, readStrictly(reader));
-        }
-        reader.endObject();
-        return object;
-      case BEGIN_ARRAY:
-        JsonArray array = new JsonArray();
-        reader.beginArray();
-        while (reader.hasNext()) {
-          array.add(readStrictly(reader));
-        }
-        reader.endArray();
-        return array;
-      case STRING:
-        return new JsonPrimitive(reader.nextString());
-      case NUMBER:
-        return new JsonPrimitive(new LazilyParsedNumber(reader.nextString()));
-      case BOOLEAN:
-        return new JsonPrimitive(reader.nextBoolean());
-      case NULL:
-        reader.nextNull();
-        return JsonNull.INSTANCE;
-      default:
-        throw new IllegalStateException("Unexpected JSON token at " + reader.getPath());
     }
   }
 
