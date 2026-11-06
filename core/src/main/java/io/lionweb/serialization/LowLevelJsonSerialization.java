@@ -303,13 +303,16 @@ public class LowLevelJsonSerialization {
     if (!topLevel.has(NODES)) {
       throw new IllegalArgumentException("nodes not specified");
     }
+    // Meta-pointers are interned (identity == equality): each distinct one is validated once per
+    // chunk instead of once per use.
+    Set<MetaPointer> validMetaPointers = strict ? new HashSet<>() : null;
     if (topLevel.get(NODES).isJsonArray()) {
       topLevel.get(NODES).getAsJsonArray().asList().stream()
           .forEach(
               element -> {
                 try {
                   SerializedClassifierInstance instance =
-                      deserializeClassifierInstance(element, declaredLanguages);
+                      deserializeClassifierInstance(element, declaredLanguages, validMetaPointers);
                   serializationChunk.addClassifierInstance(instance);
                 } catch (InvalidChunkException e) {
                   throw e;
@@ -343,14 +346,17 @@ public class LowLevelJsonSerialization {
 
   @Nullable
   private SerializedClassifierInstance deserializeClassifierInstance(
-      JsonElement jsonElement, Set<LanguageVersion> declaredLanguages) {
+      JsonElement jsonElement,
+      Set<LanguageVersion> declaredLanguages,
+      @Nullable Set<MetaPointer> validMetaPointers) {
     if (!jsonElement.isJsonObject()) {
       throw new IllegalArgumentException(
           "Malformed JSON. Object expected but found " + jsonElement);
     }
     try {
       JsonObject jsonObject = jsonElement.getAsJsonObject();
-      if (strict) {
+      if (strict && !hasValidNodeStructure(jsonObject)) {
+        // Slow path, only to build the error message
         checkNodeStructure(jsonObject);
       }
 
@@ -416,7 +422,10 @@ public class LowLevelJsonSerialization {
                 .collect(Collectors.toList()));
       }
 
-      if (strict) {
+      if (strict
+          && !hasValidNodeValues(
+              serializedClassifierInstance, declaredLanguages, validMetaPointers)) {
+        // Slow path, only to build the error message
         checkNodeValues(serializedClassifierInstance, declaredLanguages);
       }
 
@@ -623,6 +632,162 @@ public class LowLevelJsonSerialization {
 
   private static String quote(@Nullable String value) {
     return value == null ? "(missing)" : "'" + value + "'";
+  }
+
+  //
+  // Allocation-free fast paths for the strict checks. They return false as soon as something is
+  // wrong; the corresponding check* method is then run to produce the detailed error message.
+  //
+
+  private static final List<String> PROPERTY_MEMBERS = List.of(PROPERTY, VALUE);
+  private static final List<String> CONTAINMENT_MEMBERS = List.of(CONTAINMENT, CHILDREN);
+  private static final List<String> REFERENCE_MEMBERS = List.of(REFERENCE, TARGETS);
+  private static final List<String> TARGET_MEMBERS = List.of(RESOLVE_INFO, REFERENCE);
+
+  private static boolean hasOnlyMembers(JsonObject jsonObject, List<String> allowedMembers) {
+    if (jsonObject.size() > allowedMembers.size()) {
+      return false;
+    }
+    for (String member : jsonObject.keySet()) {
+      if (!allowedMembers.contains(member)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean hasValidMetaPointerMembers(@Nullable JsonElement metaPointer) {
+    return metaPointer == null
+        || !metaPointer.isJsonObject()
+        || hasOnlyMembers(metaPointer.getAsJsonObject(), META_POINTER_MEMBERS);
+  }
+
+  private static boolean hasValidEntries(
+      JsonObject node, String arrayName, List<String> expectedMembers, String featureMember) {
+    JsonElement array = node.get(arrayName);
+    if (array == null || !array.isJsonArray()) {
+      return true;
+    }
+    JsonArray entries = array.getAsJsonArray();
+    for (int i = 0; i < entries.size(); i++) {
+      JsonElement entry = entries.get(i);
+      if (entry.isJsonObject()) {
+        JsonObject entryJO = entry.getAsJsonObject();
+        if (!hasOnlyMembers(entryJO, expectedMembers)
+            || !hasValidMetaPointerMembers(entryJO.get(featureMember))) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  private static boolean hasValidNodeStructure(JsonObject node) {
+    if (!hasOnlyMembers(node, NODE_MEMBERS)
+        || !hasValidMetaPointerMembers(node.get(CLASSIFIER))
+        || !hasValidEntries(node, PROPERTIES, PROPERTY_MEMBERS, PROPERTY)
+        || !hasValidEntries(node, CONTAINMENTS, CONTAINMENT_MEMBERS, CONTAINMENT)
+        || !hasValidEntries(node, REFERENCES, REFERENCE_MEMBERS, REFERENCE)) {
+      return false;
+    }
+    JsonElement references = node.get(REFERENCES);
+    if (references != null && references.isJsonArray()) {
+      JsonArray referencesJA = references.getAsJsonArray();
+      for (int i = 0; i < referencesJA.size(); i++) {
+        JsonElement reference = referencesJA.get(i);
+        if (reference.isJsonObject()) {
+          JsonElement targets = reference.getAsJsonObject().get(TARGETS);
+          if (targets != null && targets.isJsonArray()) {
+            JsonArray targetsJA = targets.getAsJsonArray();
+            for (int j = 0; j < targetsJA.size(); j++) {
+              JsonElement target = targetsJA.get(j);
+              if (target.isJsonObject()
+                  && !hasOnlyMembers(target.getAsJsonObject(), TARGET_MEMBERS)) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  private static boolean hasValidNodeValues(
+      SerializedClassifierInstance node,
+      Set<LanguageVersion> declaredLanguages,
+      Set<MetaPointer> validMetaPointers) {
+    String id = node.getID();
+    if (id != null && !IdUtils.isValidID(id)) {
+      return false;
+    }
+    String parent = node.getParentNodeID();
+    if (parent != null && !IdUtils.isValidID(parent)) {
+      return false;
+    }
+    if (!isValidMetaPointer(node.getClassifier(), declaredLanguages, validMetaPointers)) {
+      return false;
+    }
+    List<SerializedPropertyValue> properties = node.getProperties();
+    for (int i = 0; i < properties.size(); i++) {
+      if (!isValidMetaPointer(
+          properties.get(i).getMetaPointer(), declaredLanguages, validMetaPointers)) {
+        return false;
+      }
+    }
+    List<SerializedContainmentValue> containments = node.getContainments();
+    for (int i = 0; i < containments.size(); i++) {
+      SerializedContainmentValue containment = containments.get(i);
+      if (!isValidMetaPointer(containment.getMetaPointer(), declaredLanguages, validMetaPointers)) {
+        return false;
+      }
+      List<String> children = containment.getChildrenIds();
+      for (int j = 0; j < children.size(); j++) {
+        if (!IdUtils.isValidID(children.get(j))) {
+          return false;
+        }
+      }
+    }
+    List<SerializedReferenceValue> references = node.getReferences();
+    for (int i = 0; i < references.size(); i++) {
+      SerializedReferenceValue reference = references.get(i);
+      if (!isValidMetaPointer(reference.getMetaPointer(), declaredLanguages, validMetaPointers)) {
+        return false;
+      }
+      List<SerializedReferenceValue.Entry> targets = reference.getValue();
+      for (int j = 0; j < targets.size(); j++) {
+        String target = targets.get(j).getReference();
+        if (target != null && !IdUtils.isValidID(target)) {
+          return false;
+        }
+      }
+    }
+    List<String> annotations = node.getAnnotations();
+    for (int i = 0; i < annotations.size(); i++) {
+      if (!IdUtils.isValidID(annotations.get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean isValidMetaPointer(
+      @Nullable MetaPointer metaPointer,
+      Set<LanguageVersion> declaredLanguages,
+      Set<MetaPointer> validMetaPointers) {
+    if (metaPointer == null || validMetaPointers.contains(metaPointer)) {
+      return true;
+    }
+    String version = metaPointer.getVersion();
+    if (!IdUtils.isValidID(metaPointer.getLanguage())
+        || version == null
+        || version.isEmpty()
+        || !IdUtils.isValidID(metaPointer.getKey())
+        || !declaredLanguages.contains(LanguageVersion.fromMetaPointer(metaPointer))) {
+      return false;
+    }
+    validMetaPointers.add(metaPointer);
+    return true;
   }
 
   //
