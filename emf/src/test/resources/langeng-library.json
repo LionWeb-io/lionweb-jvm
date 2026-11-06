@@ -1,6 +1,11 @@
 {
   "serializationFormatVersion": "2023.1",
-  "languages": [],
+  "languages": [
+    {
+      "key": "library",
+      "version": "1"
+    }
+  ],
   "nodes": [
     {
       "id": "mv",
@@ -19,7 +24,7 @@
           "value": "Markus Voelter"
         }
       ],
-      "children": [],
+      "containments": [],
       "references": [],
       "parent": null
     },
@@ -40,7 +45,7 @@
           "value": "Meinte Boersma"
         }
       ],
-      "children": [],
+      "containments": [],
       "references": [],
       "parent": null
     },
@@ -61,7 +66,7 @@
           "value": "Language Engineering Library"
         }
       ],
-      "children": [
+      "containments": [
         {
           "containment": {
             "language": "library",
@@ -102,7 +107,7 @@
           "value": "558"
         }
       ],
-      "children": [],
+      "containments": [],
       "references": [
         {
           "reference": {
@@ -145,7 +150,7 @@
           "value": "517"
         }
       ],
-      "children": [],
+      "containments": [],
       "references": [
         {
           "reference": {

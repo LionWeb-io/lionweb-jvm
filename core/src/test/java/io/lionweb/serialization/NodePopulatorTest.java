@@ -33,7 +33,7 @@ public class NodePopulatorTest {
             .deserializeSerializationBlock(
                 "{\n"
                     + "  \"serializationFormatVersion\": \"2024.1\",\n"
-                    + "  \"languages\": [],\n"
+                    + "  \"languages\": [{\"key\": \"LionCore-M3\", \"version\": \"2024.1\"}],\n"
                     + "  \"nodes\": [\n"
                     + "    {\n"
                     + "      \"id\": \"my-node\",\n"
@@ -87,11 +87,11 @@ public class NodePopulatorTest {
             serialization, serialization.getInstanceResolver(), deserializationStatus);
 
     SerializationChunk chunk =
-        new LowLevelJsonSerialization()
+        LowLevelJsonSerialization.tolerant()
             .deserializeSerializationBlock(
                 "{\n"
                     + "  \"serializationFormatVersion\": \"2024.1\",\n"
-                    + "  \"languages\": [],\n"
+                    + "  \"languages\": [{\"key\": \"LionCore-M3\", \"version\": \"2024.1\"}],\n"
                     + "  \"nodes\": [\n"
                     + "    {\n"
                     + "      \"id\": \"my-node\",\n"
@@ -155,7 +155,7 @@ public class NodePopulatorTest {
             .deserializeSerializationBlock(
                 "{\n"
                     + "  \"serializationFormatVersion\": \"2024.1\",\n"
-                    + "  \"languages\": [],\n"
+                    + "  \"languages\": [{\"key\": \"LionCore-M3\", \"version\": \"2024.1\"}],\n"
                     + "  \"nodes\": [\n"
                     + "    {\n"
                     + "      \"id\": \"my-node\",\n"

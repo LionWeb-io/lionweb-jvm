@@ -4,7 +4,6 @@ import static io.lionweb.serialization.SerializationProvider.getStandardJsonSeri
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
 import io.lionweb.LionWebVersion;
 import io.lionweb.language.*;
 import io.lionweb.model.ClassifierInstance;
@@ -88,6 +87,8 @@ public class JsonSerialization extends AbstractSerialization {
     InputStream inputStream = new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
     return loadLanguage(inputStream);
   }
+
+  private boolean strictChunkStructure = true;
 
   /**
    * We want to protect this from access, as the default constructor would not add the lioncore and
@@ -192,6 +193,23 @@ public class JsonSerialization extends AbstractSerialization {
   // Deserialization
   //
 
+  /**
+   * By default, deserialization enforces the structure of chunks prescribed by the specification
+   * (no unspecified members, well-formed ids, keys and versions, complete and unique list of
+   * languages, no duplicate JSON keys). Set this to false to load chunks which do not respect it.
+   */
+  public void setStrictChunkStructure(boolean strictChunkStructure) {
+    this.strictChunkStructure = strictChunkStructure;
+  }
+
+  public boolean isStrictChunkStructure() {
+    return strictChunkStructure;
+  }
+
+  private LowLevelJsonSerialization lowLevelSerialization() {
+    return new LowLevelJsonSerialization(strictChunkStructure);
+  }
+
   public List<Node> deserializeToNodes(File file) throws FileNotFoundException {
     return deserializeToNodes(new FileInputStream(file));
   }
@@ -205,7 +223,7 @@ public class JsonSerialization extends AbstractSerialization {
 
   public List<ClassifierInstance<?>> deserializeToClassifierInstances(JsonElement jsonElement) {
     SerializationChunk serializationBlock =
-        new LowLevelJsonSerialization().deserializeSerializationBlock(jsonElement);
+        lowLevelSerialization().deserializeSerializationBlock(jsonElement);
     validateSerializationBlock(serializationBlock);
     return deserializeSerializationChunk(serializationBlock);
   }
@@ -216,11 +234,12 @@ public class JsonSerialization extends AbstractSerialization {
   }
 
   public List<Node> deserializeToNodes(String json) {
-    return deserializeToNodes(JsonParser.parseString(json));
+    return deserializeToNodes(lowLevelSerialization().parse(new StringReader(json)));
   }
 
   public List<Node> deserializeToNodes(InputStream inputStream, Charset charset) {
-    return deserializeToNodes(JsonParser.parseReader(new InputStreamReader(inputStream, charset)));
+    return deserializeToNodes(
+        lowLevelSerialization().parse(new InputStreamReader(inputStream, charset)));
   }
 
   public List<Node> deserializeToNodes(InputStream inputStream) {
