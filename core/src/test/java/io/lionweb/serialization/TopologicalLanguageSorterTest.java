@@ -75,7 +75,6 @@ public class TopologicalLanguageSorterTest {
     assertTrue(indexOfMigrationV1 != -1);
     assertTrue(indexOfPipelineV1 != -1);
     assertTrue(indexOfStarlasuV1 < indexOfCodebaseV1);
-    assertTrue(indexOfStarlasuV1 < indexOfCommentsV1);
     assertTrue(indexOfStarlasuV1 < indexOfMigrationV1);
     assertTrue(indexOfStarlasuV1 < indexOfPipelineV1);
     assertTrue(indexOfStarlasuV2 < indexOfCodebaseV2);

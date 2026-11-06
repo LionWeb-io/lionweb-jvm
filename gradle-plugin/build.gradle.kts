@@ -20,7 +20,7 @@ gradlePlugin {
             id = "io.lionweb"
             displayName = "LionWeb Gradle Plugin"
             description = "Generate Java classes for a given LionWeb Language definition"
-            tags.set(listOf("lionweb", "language engineering", "MDE"))
+            tags.set(listOf("lionweb", "language-engineering", "MDE"))
             implementationClass = "io.lionweb.gradleplugin.LionWebPlugin"
         }
     }

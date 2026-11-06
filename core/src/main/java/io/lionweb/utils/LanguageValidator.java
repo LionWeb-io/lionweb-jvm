@@ -3,7 +3,6 @@ package io.lionweb.utils;
 import io.lionweb.LionWebVersion;
 import io.lionweb.language.*;
 import io.lionweb.language.Enumeration;
-import io.lionweb.lioncore.LionCore;
 import io.lionweb.model.Node;
 import io.lionweb.model.impl.M3Node;
 import java.util.*;
@@ -292,7 +291,7 @@ public class LanguageValidator extends Validator<Language> {
     }
     for (Language ul : usedLanguages) {
       if (!allDependencies.contains(ul)
-          && !isImplicitlyUsedLanguage(language.getLionWebVersion(), ul)) {
+          && !ImplicitDependencies.isImplicitDependency(language.getLionWebVersion(), ul)) {
         result.addError(
             "Language "
                 + ul.getKey()
@@ -309,16 +308,6 @@ public class LanguageValidator extends Validator<Language> {
     if (entity != null && entity.getLanguage() != null) {
       usedLanguages.add(entity.getLanguage());
     }
-  }
-
-  private boolean isImplicitlyUsedLanguage(
-      @Nonnull LionWebVersion lionWebVersion, @Nonnull Language language) {
-    // https://lionweb.io/specification/metametamodel/metametamodel.html#Language
-    // As any Language depends (at least transitively and implicitly) on built-ins elements, a
-    // Language CAN declare a
-    // dependency on builtins but does not need to.
-    return language.equals(LionCore.getInstance(lionWebVersion))
-        || language.equals(LionCoreBuiltins.getInstance(lionWebVersion));
   }
 
   private void validateKeysAreUnique(Language language, ValidationResult result) {
