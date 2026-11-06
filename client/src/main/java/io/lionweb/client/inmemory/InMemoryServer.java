@@ -90,24 +90,35 @@ public class InMemoryServer {
 
   public @NotNull List<String> listPartitionIDs(@NotNull String repositoryName) {
     Objects.requireNonNull(repositoryName, "RepositoryName should not be null");
-    RepositoryData repositoryData = repositories.get(repositoryName);
-    return repositoryData.partitionIDs;
+    RepositoryData repositoryData = getRepository(repositoryName);
+    repositoryData.lock.readLock().lock();
+    try {
+      return repositoryData.partitionIDs.copy();
+    } finally {
+      repositoryData.lock.readLock().unlock();
+    }
   }
 
+  /**
+   * Creates the partitions: the nodes without parent are the new partitions, and the other nodes
+   * must be their descendants. The command is transactional: if it fails the repository is not
+   * changed.
+   *
+   * @throws BulkCommandException (an {@link IllegalArgumentException}) if a partition already
+   *     exists ({@code PartitionAlreadyExists}), has a parent ({@code PartitionHasParent}), or the
+   *     nodes do not form valid trees
+   */
   public @NotNull RepositoryVersionToken createPartitionFromChunk(
       @NotNull String repositoryName, @NotNull List<SerializedClassifierInstance> partitions) {
     Objects.requireNonNull(partitions, "partitions should not be null");
     RepositoryData repositoryData = getRepository(repositoryName);
-    // We get all roots (i.e. -> partitions) which do not yet exist
-    // and add them to the list of partition IDs
-    repositoryData.partitionIDs.addAll(
-        partitions.stream()
-            .filter(n -> n.getParentNodeID() == null)
-            .map(SerializedClassifierInstance::getID)
-            .filter(id -> !repositoryData.partitionIDs.contains(id))
-            .collect(Collectors.toList()));
-    repositoryData.store(partitions);
-    return repositoryData.bumpVersion();
+    repositoryData.lock.writeLock().lock();
+    try {
+      repositoryData.createPartitionsTransactional(partitions);
+      return repositoryData.bumpVersion();
+    } finally {
+      repositoryData.lock.writeLock().unlock();
+    }
   }
 
   public @NotNull RepositoryVersionToken createPartition(
@@ -126,22 +137,60 @@ public class InMemoryServer {
     return createPartitionFromChunk(repositoryName, serializationChunk.getClassifierInstances());
   }
 
+  /**
+   * Deletes the partitions with all their contents (children and annotations, transitively).
+   * Unknown ids are ignored. The command is transactional: if it fails the repository is not
+   * changed.
+   *
+   * @throws BulkCommandException (an {@link IllegalArgumentException}) with kind {@code
+   *     NodeIsNotPartition} if one of the ids is not the id of a partition
+   */
   public @NotNull RepositoryVersionToken deletePartitions(
       @NotNull String repositoryName, @NotNull List<String> partitionIds) {
     Objects.requireNonNull(partitionIds, "partitionIds should not be null");
     RepositoryData repositoryData = getRepository(repositoryName);
-    repositoryData.partitionIDs.removeIf(partitionIds::contains);
-    partitionIds.forEach(repositoryData::deleteNodeAndDescendant);
-    return repositoryData.bumpVersion();
+    repositoryData.lock.writeLock().lock();
+    try {
+      repositoryData.deletePartitionsTransactional(partitionIds);
+      return repositoryData.bumpVersion();
+    } finally {
+      repositoryData.lock.writeLock().unlock();
+    }
   }
 
+  /**
+   * Retrieves the nodes with the given ids, with their descendants down to the depth limit.
+   *
+   * @throws BulkCommandException (an {@link IllegalArgumentException}) if an id is unknown ({@code
+   *     IdNotFound}) or the limit is negative ({@code DepthLimitIncorrect}). Use {@link
+   *     #retrieveReportingUnknown} to have unknown ids reported without failing.
+   */
   public List<SerializedClassifierInstance> retrieve(
       @NotNull String repositoryName, List<String> nodeIds, int limit) {
+    RetrieveResult result = retrieveReportingUnknown(repositoryName, nodeIds, limit);
+    if (!result.getUnknownIds().isEmpty()) {
+      String id = result.getUnknownIds().get(0);
+      throw BulkCommandException.of(
+          BulkMessageKind.ID_NOT_FOUND, "Node with id " + id + " cannot be found", "nodeId", id);
+    }
+    return result.getNodes();
+  }
+
+  /**
+   * Like {@link #retrieve}, but ids which do not exist do not make the command fail: they are
+   * listed in the result.
+   */
+  public @NotNull RetrieveResult retrieveReportingUnknown(
+      @NotNull String repositoryName, @NotNull List<String> nodeIds, int limit) {
     Objects.requireNonNull(repositoryName, "RepositoryName should not be null");
-    RepositoryData repositoryData = repositories.get(repositoryName);
-    List<SerializedClassifierInstance> retrieved = new ArrayList<>();
-    nodeIds.forEach(n -> repositoryData.retrieve(n, limit, retrieved));
-    return retrieved;
+    Objects.requireNonNull(nodeIds, "nodeIds should not be null");
+    RepositoryData repositoryData = getRepository(repositoryName);
+    repositoryData.lock.readLock().lock();
+    try {
+      return repositoryData.retrieveReportingUnknown(nodeIds, limit);
+    } finally {
+      repositoryData.lock.readLock().unlock();
+    }
   }
 
   public @Nullable ClassifierInstance<?> retrieveAsClassifierInstance(
@@ -165,15 +214,24 @@ public class InMemoryServer {
   }
 
   /**
+   * Creates or updates nodes. The command is transactional: if the nodes would lead to a malformed
+   * tree nothing is changed and a {@link BulkCommandException} (an {@link
+   * IllegalArgumentException}) is thrown. See the bulk API specification for the message kinds.
+   *
    * @param nodes {@link io.lionweb.serialization.LowLevelJsonSerialization} can produce {@link
    *     SerializedClassifierInstance} nodes, if we need to store data from JSON files.
    */
   public RepositoryVersionToken store(
       @NotNull String repositoryName, @NotNull List<SerializedClassifierInstance> nodes) {
     Objects.requireNonNull(repositoryName, "RepositoryName should not be null");
-    RepositoryData repositoryData = repositories.get(repositoryName);
-    repositoryData.store(nodes);
-    return repositoryData.bumpVersion();
+    RepositoryData repositoryData = getRepository(repositoryName);
+    repositoryData.lock.writeLock().lock();
+    try {
+      repositoryData.storeTransactional(nodes);
+      return repositoryData.bumpVersion();
+    } finally {
+      repositoryData.lock.writeLock().unlock();
+    }
   }
 
   //
