@@ -1,5 +1,6 @@
 package io.lionweb.client.inmemory;
 
+import java.util.Locale;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -9,29 +10,32 @@ import org.jetbrains.annotations.NotNull;
  * specification leaves the kind to be defined, a descriptive name is used.
  */
 public enum BulkMessageKind {
-  DEPTH_LIMIT_INCORRECT("DepthLimitIncorrect"),
-  DUPLICATE_NODE_ID("DuplicateNodeId"),
-  EMPTY_ID_LIST("EmptyIdList"),
-  ID_NOT_FOUND("IdNotFound"),
-  IDS_INCORRECT("IdsIncorrect"),
-  NODE_ALREADY_EXISTS("NodeAlreadyExists"),
-  NODE_HAS_MULTIPLE_PARENTS("NodeHasMultipleParents"),
-  NODE_IS_NOT_PARTITION("NodeIsNotPartition"),
-  NODE_LISTED_MORE_THAN_ONCE("NodeListedMoreThanOnce"),
-  NULL_CHUNK("NullChunk"),
-  PARENT_MISMATCH("ParentMismatch"),
-  PARENT_MISSING("ParentMissing"),
-  PARTITION_ALREADY_EXISTS("PartitionAlreadyExists"),
-  PARTITION_HAS_PARENT("PartitionHasParent"),
-  TREE_CYCLE("TreeCycle");
+  DEPTH_LIMIT_INCORRECT,
+  DUPLICATE_NODE_ID,
+  EMPTY_ID_LIST,
+  ID_NOT_FOUND,
+  IDS_INCORRECT,
+  NODE_ALREADY_EXISTS,
+  NODE_HAS_MULTIPLE_PARENTS,
+  NODE_IS_NOT_PARTITION,
+  NODE_LISTED_MORE_THAN_ONCE,
+  NULL_CHUNK,
+  PARENT_MISMATCH,
+  PARENT_MISSING,
+  PARTITION_ALREADY_EXISTS,
+  PARTITION_HAS_PARENT,
+  TREE_CYCLE;
 
   private final @NotNull String kindName;
 
-  BulkMessageKind(@NotNull String kindName) {
-    this.kindName = kindName;
+  BulkMessageKind() {
+    this.kindName = toPascalCase(name());
   }
 
-  /** The name of the kind, as it appears in the messages, e.g. {@code ParentMissing}. */
+  /**
+   * The name of the kind, as it appears in the messages: the name of the constant in PascalCase,
+   * e.g. {@code ParentMissing} for {@link #PARENT_MISSING}.
+   */
   public @NotNull String getKindName() {
     return kindName;
   }
@@ -39,5 +43,13 @@ public enum BulkMessageKind {
   @Override
   public String toString() {
     return kindName;
+  }
+
+  private static String toPascalCase(String constantName) {
+    StringBuilder sb = new StringBuilder(constantName.length());
+    for (String word : constantName.split("_")) {
+      sb.append(word.charAt(0)).append(word.substring(1).toLowerCase(Locale.ROOT));
+    }
+    return sb.toString();
   }
 }
