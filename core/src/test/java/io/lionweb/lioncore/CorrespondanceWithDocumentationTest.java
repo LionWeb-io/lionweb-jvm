@@ -34,6 +34,8 @@ public class CorrespondanceWithDocumentationTest {
   @Test
   public void lioncoreIsTheSameAsInTheOrganizationRepo2023_1() throws IOException {
     JsonSerialization jsonSer = getStandardJsonSerialization(LionWebVersion.v2023_1);
+    // The published 2023.1 files do not list all the languages they use in 'languages'
+    jsonSer.setStrictChunkStructure(false);
 
     URL url =
         new URL(
@@ -78,6 +80,8 @@ public class CorrespondanceWithDocumentationTest {
   @Test
   public void builtInIsTheSameAsInTheOrganizationRepo2023_1() throws IOException {
     JsonSerialization jsonSer = getStandardJsonSerialization(LionWebVersion.v2023_1);
+    // The published 2023.1 files do not list all the languages they use in 'languages'
+    jsonSer.setStrictChunkStructure(false);
 
     URL url =
         new URL(

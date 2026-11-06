@@ -9,6 +9,14 @@ Reading serialized values is now stricter, following the 2024.1 specification. C
 * `Integer` values must be base-10 with an optional sign, ASCII digits only and no leading zeros (e.g. `"00002"` is rejected); values outside the 32-bit range are rejected with an explicit error
 * `StructuredDataType` values: missing, null, unknown or wrongly typed fields are rejected on read; writing an instance with an unset field throws `IllegalStateException` instead of writing `null`
 
+`LowLevelJsonSerialization` (and so `JsonSerialization`) now enforces the structure of chunks, in LionWeb 2023.1 and 2024.1 (issue #463). Chunks that were silently accepted before may now be rejected with a `DeserializationException`:
+
+* no unspecified members in nodes, properties, containments, references, reference targets and meta-pointers; the legacy `children` member of nodes is no longer accepted
+* ids (when present), language keys, feature keys and versions must be well-formed
+* `languages` must not contain duplicates and must list all the languages used by meta-pointers
+* when parsing text or files, duplicate keys and JSON which is not strictly RFC 8259 are rejected
+* to load such chunks anyway, use `LowLevelJsonSerialization.tolerant()` or `JsonSerialization.setStrictChunkStructure(false)`
+
 Other changes:
 
 * CI: run integration tests and javadoc within the build jobs, build the server Docker image once per functional test job, cancel superseded runs and test on Java 17 and 25 only
