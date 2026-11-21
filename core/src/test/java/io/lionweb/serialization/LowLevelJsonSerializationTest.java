@@ -150,7 +150,7 @@ public class LowLevelJsonSerializationTest extends SerializationTest {
   private static String chunkWithPropertyValue(String jsonValue) {
     return "{\n"
         + "  \"serializationFormatVersion\": \"2024.1\",\n"
-        + "  \"languages\": [],\n"
+        + "  \"languages\": [{\"key\": \"l\", \"version\": \"1\"}],\n"
         + "  \"nodes\": [{\n"
         + "    \"id\": \"n1\",\n"
         + "    \"classifier\": {\"language\": \"l\", \"version\": \"1\", \"key\": \"c\"},\n"

@@ -1,5 +1,15 @@
 # Changelog
 
+### Version 1.4.9
+
+`LowLevelJsonSerialization` (and so `JsonSerialization`) now enforces the structure of chunks, in LionWeb 2023.1 and 2024.1 (issue #463). Chunks that were silently accepted before may now be rejected with a `DeserializationException`:
+
+* no unspecified members in nodes, properties, containments, references, reference targets and meta-pointers; the legacy `children` member of nodes is no longer accepted
+* ids (when present), language keys, feature keys and versions must be well-formed
+* `languages` must not contain duplicates and must list all the languages used by meta-pointers
+* when parsing text or files, JSON which is not strictly RFC 8259 is rejected
+* to load such chunks anyway, use `LowLevelJsonSerialization.tolerant()` or `JsonSerialization.setStrictChunkStructure(false)`
+
 ### Version 1.4.8
 
 Reading serialized values is now stricter, following the 2024.1 specification. Chunks that were silently accepted before may now be rejected (issue #462):
