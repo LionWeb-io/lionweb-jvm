@@ -1,5 +1,5 @@
 [versions]
-clikt = "5.1.0"
+clikt = "5.2.1"
 javaWebSocket = "1.6.0"
 protobufVersion = "4.36.2"
 junitVersion="5.13.4"
