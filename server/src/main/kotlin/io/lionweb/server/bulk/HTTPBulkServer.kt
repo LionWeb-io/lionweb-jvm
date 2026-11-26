@@ -12,6 +12,8 @@ import io.lionweb.client.api.ClassifierResult
 import io.lionweb.client.api.HistorySupport
 import io.lionweb.client.api.RepositoryConfiguration
 import io.lionweb.client.api.RepositoryVersionToken
+import io.lionweb.client.inmemory.BulkCommandException
+import io.lionweb.client.inmemory.BulkMessageKind
 import io.lionweb.client.inmemory.InMemoryServer
 import io.lionweb.serialization.LowLevelJsonSerialization
 import io.lionweb.serialization.data.SerializationChunk
@@ -136,17 +138,46 @@ class HTTPBulkServer(
 
     private fun handleRetrieve(exchange: HttpExchange) {
         val repository = exchange.requiredQueryParam("repository")
-        val limit = exchange.queryParam("depthLimit")?.toIntOrNull() ?: Int.MAX_VALUE
+        val limit = exchange.depthLimit()
         val idsObject = JsonParser.parseString(exchange.readRequestBodyText()).asJsonObject
         val ids =
-            idsObject.getAsJsonArray("ids")?.map {
-                it.asString
-            } ?: emptyList()
-        val nodes =
-            synchronized(inMemoryServer) {
-                if (ids.isEmpty()) emptyList() else inMemoryServer.retrieve(repository, ids, limit)
+            try {
+                idsObject.getAsJsonArray("ids")?.map {
+                    require(it.isJsonPrimitive && it.asJsonPrimitive.isString)
+                    it.asString
+                } ?: emptyList()
+            } catch (e: RuntimeException) {
+                throw BulkCommandException(
+                    BulkMessageKind.IDS_INCORRECT,
+                    "The ids parameter must be a list of strings",
+                    mapOf("nodeIds" to (idsObject.get("ids")?.toString() ?: "null")),
+                )
             }
-        exchange.sendJson(HttpURLConnection.HTTP_OK, chunkResponse(repository, nodes))
+        if (ids.isEmpty()) {
+            // Validate the repository name and the depth limit even if there is nothing to retrieve
+            inMemoryServer.getRepositoryConfiguration(repository)
+            val response = chunkResponse(repository, emptyList())
+            response.getAsJsonArray("messages").add(message(BulkMessageKind.EMPTY_ID_LIST.kindName, "Empty id list", emptyMap()))
+            exchange.sendJson(HttpURLConnection.HTTP_OK, response)
+            return
+        }
+        val result =
+            synchronized(inMemoryServer) {
+                inMemoryServer.retrieveReportingUnknown(repository, ids, limit)
+            }
+        val response = chunkResponse(repository, result.nodes)
+        result.unknownIds.forEach {
+            response.getAsJsonArray("messages").add(
+                message(
+                    BulkMessageKind.ID_NOT_FOUND.kindName,
+                    "Node with id $it does not exist",
+                    mapOf(
+                        "nodeId" to it,
+                    ),
+                ),
+            )
+        }
+        exchange.sendJson(HttpURLConnection.HTTP_OK, response)
     }
 
     private fun handleNodesByClassifier(exchange: HttpExchange) {
@@ -231,9 +262,28 @@ class HTTPBulkServer(
         }
         try {
             handler()
+        } catch (e: BulkCommandException) {
+            sendJson(HttpURLConnection.HTTP_BAD_REQUEST, failure(e.kind.kindName, e.message ?: e.kind.kindName, e.data))
         } catch (e: IllegalArgumentException) {
             sendJson(HttpURLConnection.HTTP_BAD_REQUEST, failure(e.message ?: e.javaClass.name))
         }
+    }
+
+    /**
+     * The depth limit is optional (no limit when omitted), and otherwise it must be an integer >= 0.
+     * Values too big for an Int are as good as no limit.
+     */
+    private fun HttpExchange.depthLimit(): Int {
+        val value = queryParam("depthLimit") ?: return Int.MAX_VALUE
+        val number = value.toBigIntegerOrNull()
+        if (number == null || number.signum() < 0) {
+            throw BulkCommandException(
+                BulkMessageKind.DEPTH_LIMIT_INCORRECT,
+                "The depth limit must be an integer >= 0, but it is '$value'",
+                mapOf("depthLimit" to value),
+            )
+        }
+        return if (number.bitLength() > 31) Int.MAX_VALUE else number.toInt()
     }
 
     private fun HttpExchange.readSerializationChunk(): SerializationChunk =
@@ -281,20 +331,29 @@ class HTTPBulkServer(
             it.add("messages", JsonArray().also { messages -> version?.let { v -> messages.add(repoVersionMessage(v)) } })
         }
 
-    private fun failure(message: String): JsonObject =
+    private fun failure(message: String): JsonObject = failure("Error", message, emptyMap())
+
+    private fun failure(
+        kind: String,
+        message: String,
+        data: Map<String, String>,
+    ): JsonObject =
         JsonObject().also {
             it.addProperty("success", false)
-            it.add(
-                "messages",
-                JsonArray().also { messages ->
-                    messages.add(
-                        JsonObject().also { error ->
-                            error.addProperty("kind", "Error")
-                            error.addProperty("message", message)
-                        },
-                    )
-                },
-            )
+            it.add("messages", JsonArray().also { messages -> messages.add(message(kind, message, data)) })
+        }
+
+    private fun message(
+        kind: String,
+        message: String,
+        data: Map<String, String>,
+    ): JsonObject =
+        JsonObject().also { error ->
+            error.addProperty("kind", kind)
+            error.addProperty("message", message)
+            if (data.isNotEmpty()) {
+                error.add("data", JsonObject().also { d -> data.forEach { (k, v) -> d.addProperty(k, v) } })
+            }
         }
 
     private fun repoVersionMessage(version: RepositoryVersionToken): JsonObject {
